@@ -8,7 +8,12 @@ const errorMiddleware = require("./middleware/error");
 
 app.use(
   cors({
-    origin: ["http://localhost:3000", "http://localhost:4000"],
+    origin: [
+      "http://localhost:3000",
+      "http://localhost:4000",
+      "https://kv.radheytechsolutions.in",
+      "https://kv.radheytechsolutions.in/api",
+    ],
     credentials: true, // if you're using cookies/auth
   })
 );
