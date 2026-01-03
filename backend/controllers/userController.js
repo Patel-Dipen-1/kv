@@ -1532,3 +1532,224 @@ exports.transferPrimaryAccount = catchAsyncErrors(async (req, res, next) => {
     },
   });
 });
+
+/**
+ * Search users and families by name or Family ID (Public/Private search)
+ * GET /api/users/search-family?q={query}
+ * 
+ * Detects if query is:
+ * - Family ID (starts with "FAM-") -> Returns all users in that family
+ * - Name search -> Returns matching users with their family info
+ * 
+ * Security: Only returns approved, active users. Family members fetched only through users.
+ */
+exports.searchFamily = catchAsyncErrors(async (req, res, next) => {
+  const { q } = req.query;
+  const currentUser = req.user; // May be undefined for public search
+
+  if (!q || q.trim().length < 2) {
+    return next(new ErrorHandler("Search query must be at least 2 characters", 400));
+  }
+
+  const query = q.trim();
+  const FamilyMember = require("../models/familyMemberModel");
+
+  // Detect if query is a Family ID (starts with "FAM-")
+  const isFamilyIdSearch = query.toUpperCase().startsWith("FAM-");
+
+  let results = [];
+
+  if (isFamilyIdSearch) {
+    // CASE 2: Search by Family ID
+    const familyId = query.toUpperCase();
+
+    // Find all users with this Family ID
+    const users = await User.find({
+      subFamilyNumber: familyId,
+      status: "approved",
+      isActive: true,
+      deletedAt: null,
+    })
+      .select("-password -passwordResetToken -passwordResetExpires")
+      .sort({ isPrimaryAccount: -1, createdAt: 1 }) // Primary account first
+      .lean();
+
+    if (users.length === 0) {
+      return res.status(200).json({
+        success: true,
+        searchType: "familyId",
+        query: familyId,
+        results: [],
+        message: "No family found with this Family ID",
+      });
+    }
+
+    // Get primary user (head of family)
+    const primaryUser = users.find((u) => u.isPrimaryAccount) || users[0];
+
+    // Fetch all family members (from FamilyMember collection) for this Family ID
+    const familyMembers = await FamilyMember.find({
+      subFamilyNumber: familyId,
+      approvalStatus: "approved",
+      isActive: true,
+      deletedAt: null,
+    })
+      .select("-__v")
+      .sort({ relationshipToUser: 1, createdAt: 1 })
+      .lean();
+
+    // Combine all family data
+    const allFamilyMembers = [
+      ...users.map((user) => ({
+        ...user,
+        memberType: "user",
+        isPrimary: user.isPrimaryAccount || false,
+      })),
+      ...familyMembers.map((member) => ({
+        ...member,
+        memberType: "familyMember",
+        isPrimary: false,
+      })),
+    ];
+
+    results.push({
+      familyId: familyId,
+      primaryUser: {
+        _id: primaryUser._id,
+        name: `${primaryUser.firstName} ${primaryUser.lastName}`,
+        email: primaryUser.email,
+        mobileNumber: primaryUser.mobileNumber,
+        city: primaryUser.address?.city,
+        state: primaryUser.address?.state,
+      },
+      totalMembers: allFamilyMembers.length,
+      members: allFamilyMembers,
+    });
+  } else {
+    // CASE 1: Search by Name
+    const searchRegex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+
+    // Search users by name, email, or mobile
+    const users = await User.find({
+      $or: [
+        { firstName: searchRegex },
+        { lastName: searchRegex },
+        { middleName: searchRegex },
+        { email: searchRegex },
+        { mobileNumber: searchRegex },
+      ],
+      status: "approved",
+      isActive: true,
+      deletedAt: null,
+    })
+      .select("-password -passwordResetToken -passwordResetExpires")
+      .sort({ firstName: 1, lastName: 1 })
+      .limit(20) // Limit to 20 results for performance
+      .lean();
+
+    // For each user, prepare result with family info (but don't fetch family members yet)
+    results = users.map((user) => ({
+      _id: user._id,
+      name: `${user.firstName} ${user.middleName ? user.middleName + " " : ""}${user.lastName}`,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      middleName: user.middleName,
+      email: user.email,
+      mobileNumber: user.mobileNumber,
+      city: user.address?.city,
+      state: user.address?.state,
+      country: user.address?.country,
+      familyId: user.subFamilyNumber,
+      isPrimary: user.isPrimaryAccount || false,
+      // Family members will be fetched on-demand when user expands the card
+      familyMembersCount: 0, // Will be populated when expanded
+      familyMembers: null, // Will be fetched on-demand
+    }));
+  }
+
+  res.status(200).json({
+    success: true,
+    searchType: isFamilyIdSearch ? "familyId" : "name",
+    query: query,
+    results: results,
+    count: results.length,
+  });
+});
+
+/**
+ * Get family members for a specific user (used when expanding user card)
+ * GET /api/users/:userId/family-members
+ * 
+ * Security: Only returns family members linked to approved users
+ */
+exports.getUserFamilyMembers = catchAsyncErrors(async (req, res, next) => {
+  const { userId } = req.params;
+
+  // Get the user first
+  const user = await User.findById(userId)
+    .select("subFamilyNumber status isActive deletedAt")
+    .lean();
+
+  if (!user) {
+    return next(new ErrorHandler("User not found", 404));
+  }
+
+  // Security check: Only return if user is approved and active
+  if (user.status !== "approved" || !user.isActive || user.deletedAt) {
+    return next(new ErrorHandler("User not available", 403));
+  }
+
+  if (!user.subFamilyNumber) {
+    return res.status(200).json({
+      success: true,
+      familyId: null,
+      members: [],
+      count: 0,
+    });
+  }
+
+  const FamilyMember = require("../models/familyMemberModel");
+
+  // Get all users in the same family
+  const familyUsers = await User.find({
+    subFamilyNumber: user.subFamilyNumber,
+    status: "approved",
+    isActive: true,
+    deletedAt: null,
+  })
+    .select("-password -passwordResetToken -passwordResetExpires")
+    .sort({ isPrimaryAccount: -1, createdAt: 1 })
+    .lean();
+
+  // Get all family members (from FamilyMember collection)
+  const familyMembers = await FamilyMember.find({
+    subFamilyNumber: user.subFamilyNumber,
+    approvalStatus: "approved",
+    isActive: true,
+    deletedAt: null,
+  })
+    .select("-__v")
+    .sort({ relationshipToUser: 1, createdAt: 1 })
+    .lean();
+
+  // Combine and format
+  const allMembers = [
+    ...familyUsers.map((u) => ({
+      ...u,
+      memberType: "user",
+      isPrimary: u.isPrimaryAccount || false,
+    })),
+    ...familyMembers.map((m) => ({
+      ...m,
+      memberType: "familyMember",
+      isPrimary: false,
+    })),
+  ];
+
+  res.status(200).json({
+    success: true,
+    familyId: user.subFamilyNumber,
+    members: allMembers,
+    count: allMembers.length,
+  });
+});

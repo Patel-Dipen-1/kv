@@ -4,7 +4,7 @@ import { useSelector, useDispatch } from "react-redux";
 import { logout } from "../../features/auth/authSlice";
 import { useEnums } from "../../hooks/useEnums";
 import { usePermission } from "../../hooks/usePermission";
-import { Menu, X, User, LogOut, Network, Users, Calendar } from "lucide-react";
+import { Menu, X, User, LogOut, Network, Users, Calendar, LayoutDashboard, Search } from "lucide-react";
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -39,12 +39,19 @@ const Navbar = () => {
     if (path === "/family-members") {
       return location.pathname.startsWith("/family-members");
     }
+    if (path === "/admin/dashboard") {
+      return location.pathname.startsWith("/admin");
+    }
+    if (path === "/search") {
+      return location.pathname === "/search";
+    }
     return location.pathname === path;
   };
 
   // Base nav links for all authenticated users
   const baseNavLinks = [
     { path: "/profile", label: "Profile", icon: User, show: isAuthenticated },
+    { path: "/search", label: "Search", icon: Search, show: isAuthenticated },
     { path: "/events", label: "Events", icon: Calendar, show: isAuthenticated },
     { 
       path: "/family-connections", 
@@ -61,15 +68,15 @@ const Navbar = () => {
     { path: "/committee", label: "Committee", icon: null, show: true }, // Public link
   ];
 
-  // Admin link (only show if has admin permissions)
+  // Admin Dashboard link (only show if has admin permissions)
   const adminLink = {
     path: "/admin/dashboard",
-    label: "Admin",
-    icon: null,
+    label: "Dashboard",
+    icon: LayoutDashboard,
     show: isAuthenticated && hasAdminPermissions,
   };
 
-  // Combine all nav links
+  // Combine all nav links - add admin dashboard if user has admin permissions
   const navLinks = [
     ...baseNavLinks,
     ...(adminLink.show ? [adminLink] : []),

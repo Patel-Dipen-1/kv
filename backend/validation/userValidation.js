@@ -20,7 +20,7 @@ const handleValidationErrors = (req, res, next) => {
   next();
 };
 
-// Validation for user registration
+// Validation for user registration - PHASE 1: BASIC FIELDS ONLY
 exports.registerUserValidation = [
   body("firstName")
     .trim()
@@ -29,12 +29,6 @@ exports.registerUserValidation = [
     .isLength({ min: 2, max: 50 })
     .withMessage("First name must be between 2 and 50 characters"),
 
-  body("middleName")
-    .optional()
-    .trim()
-    .isLength({ max: 50 })
-    .withMessage("Middle name cannot exceed 50 characters"),
-
   body("lastName")
     .trim()
     .notEmpty()
@@ -42,39 +36,9 @@ exports.registerUserValidation = [
     .isLength({ min: 2, max: 50 })
     .withMessage("Last name must be between 2 and 50 characters"),
 
-  body("address.line1")
-    .trim()
-    .notEmpty()
-    .withMessage("Address line 1 is required"),
-
-  body("address.line2")
-    .optional()
-    .trim(),
-
-  body("address.city")
-    .trim()
-    .notEmpty()
-    .withMessage("City is required"),
-
-  body("address.state")
-    .trim()
-    .notEmpty()
-    .withMessage("State is required"),
-
-  body("address.pincode")
-    .trim()
-    .notEmpty()
-    .withMessage("Pincode is required")
-    .matches(/^\d{6}$/)
-    .withMessage("Pincode must be a 6-digit number"),
-
-  body("age")
-    .optional()
-    .isInt({ min: 0, max: 120 })
-    .withMessage("Age must be between 0 and 120"),
-
   body("dateOfBirth")
-    .optional()
+    .notEmpty()
+    .withMessage("Date of birth is required")
     .isISO8601()
     .withMessage("Date of birth must be a valid date")
     .custom((value) => {
@@ -99,57 +63,13 @@ exports.registerUserValidation = [
     .withMessage("Please enter a valid email")
     .normalizeEmail(),
 
-  body("occupationType")
-    .notEmpty()
-    .withMessage("Occupation type is required")
-    .isIn(OCCUPATION_TYPES)
-    .withMessage(`Occupation type must be one of: ${OCCUPATION_TYPES.join(", ")}`),
-
-  body("occupationTitle")
-    .optional()
-    .trim(),
-
-  body("companyOrBusinessName")
-    .optional()
-    .trim(),
-
-  body("position")
-    .optional()
-    .trim(),
-
-  body("qualification")
-    .optional()
-    .trim()
-    .isLength({ max: 100 })
-    .withMessage("Qualification cannot exceed 100 characters"),
-
-  body("maritalStatus")
-    .notEmpty()
-    .withMessage("Marital status is required")
-    .isIn(MARITAL_STATUS)
-    .withMessage(`Marital status must be one of: ${MARITAL_STATUS.join(", ")}`),
-
-  body("samaj")
-    .notEmpty()
-    .withMessage("Samaj/Community is required")
-    .isIn(SAMAJ_TYPES)
-    .withMessage(`Samaj must be one of: ${SAMAJ_TYPES.join(", ")}`),
-
-  body("profileImage")
-    .optional()
-    .trim(),
-
-  body("subFamilyNumber")
-    .optional()
-    .trim()
-    .isLength({ max: 30 })
-    .withMessage("Sub-family number cannot exceed 30 characters"),
-
   body("password")
     .notEmpty()
     .withMessage("Password is required")
     .isLength({ min: 8 })
-    .withMessage("Password must be at least 8 characters"),
+    .withMessage("Password must be at least 8 characters")
+    .matches(/^(?=.*[A-Za-z])(?=.*\d)/)
+    .withMessage("Password must contain at least one letter and one number"),
 
   body("confirmPassword")
     .notEmpty()
