@@ -1,7 +1,7 @@
 import * as yup from "yup";
 import { SAMAJ_TYPES, OCCUPATION_TYPES, MARITAL_STATUS } from "../constants/enums";
 
-// Registration validation schema
+// Registration validation schema - ALL FIELDS REQUIRED
 export const registerSchema = yup.object().shape({
   firstName: yup
     .string()
@@ -10,6 +10,7 @@ export const registerSchema = yup.object().shape({
     .max(50, "First name cannot exceed 50 characters"),
   middleName: yup
     .string()
+    .required("Middle name is required")
     .max(50, "Middle name cannot exceed 50 characters"),
   lastName: yup
     .string()
@@ -18,9 +19,10 @@ export const registerSchema = yup.object().shape({
     .max(50, "Last name cannot exceed 50 characters"),
   address: yup.object().shape({
     line1: yup.string().required("Address line 1 is required"),
-    line2: yup.string(),
+    line2: yup.string().required("Address line 2 is required"),
     city: yup.string().required("City is required"),
     state: yup.string().required("State is required"),
+    country: yup.string().required("Country is required"),
     pincode: yup
       .string()
       .required("Pincode is required")
@@ -28,15 +30,19 @@ export const registerSchema = yup.object().shape({
   }),
   age: yup
     .number()
+    .required("Age is required")
     .min(0, "Age cannot be negative")
-    .max(120, "Age cannot exceed 120"),
+    .max(120, "Age cannot exceed 120")
+    .typeError("Age must be a number"),
   dateOfBirth: yup
     .date()
-    .max(new Date(), "Date of birth cannot be in the future"),
+    .required("Date of birth is required")
+    .max(new Date(), "Date of birth cannot be in the future")
+    .typeError("Please enter a valid date"),
   mobileNumber: yup
     .string()
     .required("Mobile number is required")
-    .matches(/^(\+91)?[6-9]\d{9}$/, "Please enter a valid 10-digit Indian mobile number"),
+    .matches(/^[6-9]\d{9}$/, "Please enter a valid 10-digit Indian mobile number"),
   email: yup
     .string()
     .required("Email is required")
@@ -45,11 +51,21 @@ export const registerSchema = yup.object().shape({
     .string()
     .required("Occupation type is required")
     .oneOf(OCCUPATION_TYPES, "Invalid occupation type"),
-  occupationTitle: yup.string(),
-  companyOrBusinessName: yup.string(),
-  position: yup.string(),
+  occupationTitle: yup
+    .string()
+    .required("Occupation title is required")
+    .max(100, "Occupation title cannot exceed 100 characters"),
+  companyOrBusinessName: yup
+    .string()
+    .required("Company/Business name is required")
+    .max(100, "Company/Business name cannot exceed 100 characters"),
+  position: yup
+    .string()
+    .required("Position is required")
+    .max(100, "Position cannot exceed 100 characters"),
   qualification: yup
     .string()
+    .required("Qualification is required")
     .max(100, "Qualification cannot exceed 100 characters"),
   maritalStatus: yup
     .string()
@@ -59,29 +75,21 @@ export const registerSchema = yup.object().shape({
     .string()
     .required("Samaj/Community is required")
     .oneOf(SAMAJ_TYPES, "Invalid samaj/community"),
+  bloodGroup: yup
+    .string()
+    .required("Blood group is required"),
   password: yup
     .string()
-    .optional()
+    .required("Password is required")
     .min(8, "Password must be at least 8 characters")
     .matches(
       /^(?=.*[A-Za-z])(?=.*\d)/,
       "Password must contain at least one letter and one number"
-    )
-    .test(
-      "password-or-mobile",
-      "Password must contain at least one letter and one number if provided",
-      function (value) {
-        // If password is provided, validate it
-        if (value && value.length > 0) {
-          return /^(?=.*[A-Za-z])(?=.*\d)/.test(value);
-        }
-        // If not provided, mobile number will be used as default
-        return true;
-      }
     ),
-  subFamilyNumber: yup
+  confirmPassword: yup
     .string()
-    .max(30, "Sub-family number cannot exceed 30 characters"),
+    .required("Please confirm your password")
+    .oneOf([yup.ref("password")], "Passwords must match"),
 });
 
 // Login validation schema

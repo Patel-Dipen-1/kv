@@ -1,10 +1,11 @@
 const Location = require("../models/locationModel");
 const ErrorHandler = require("../utils/errorhander");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
+const locationService = require("../services/locationService");
 
 /**
- * Get location by city name
- * GET /api/locations?city=Ahmedabad&country=India
+ * Get location by city name using country-state-city library
+ * GET /api/locations?city=Ahmedabad&state=Gujarat&countryCode=IN
  * 
  * Response:
  * {
@@ -19,7 +20,7 @@ const catchAsyncErrors = require("../middleware/catchAsyncErrors");
  * }
  */
 exports.getLocationByCity = catchAsyncErrors(async (req, res, next) => {
-  const { city, country, state } = req.query;
+  const { city, state, countryCode = "IN" } = req.query;
 
   // Validation
   if (!city || city.trim() === "") {
@@ -27,99 +28,76 @@ exports.getLocationByCity = catchAsyncErrors(async (req, res, next) => {
   }
 
   const cityName = city.trim();
+  const stateName = state ? state.trim() : null;
 
   try {
-    let location;
+    // Get city from library
+    const cityData = locationService.getCityByName(cityName, stateName, countryCode);
 
-    // If state and country are provided, try exact match first
-    if (state && country) {
-      location = await Location.findExact(cityName, state.trim(), country.trim());
+    if (!cityData) {
+      return res.status(404).json({
+        success: false,
+        message: `City "${cityName}" not found. Please check the spelling or try a different city.`,
+        data: null,
+      });
     }
 
-    // If not found or not provided, search by city (and country if provided)
-    if (!location) {
-      const locations = await Location.findByCity(cityName, country || null);
+    // Get pincode from database (if available)
+    const pincodeData = await locationService.getPincodeForCity(
+      cityData.city,
+      cityData.state,
+      countryCode
+    );
 
-      if (locations.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: `Location not found for city: ${cityName}`,
-          data: null,
-        });
-      }
-
-      // If multiple locations found (duplicate city names)
-      if (locations.length > 1) {
-        // If country provided, filter by country
-        if (country) {
-          const filtered = locations.filter(
-            (loc) => loc.country.toLowerCase() === country.trim().toLowerCase()
-          );
-          if (filtered.length > 0) {
-            location = filtered[0];
-          } else {
-            location = locations[0]; // Default to first match
-          }
-        } else {
-          // Default to first match (can be enhanced with user preference)
-          location = locations[0];
-        }
-      } else {
-        location = locations[0];
-      }
-    }
+    // Build response
+    const responseData = {
+      city: cityData.city,
+      state: cityData.state,
+      stateCode: cityData.stateCode,
+      country: cityData.country,
+      countryCode: cityData.countryCode,
+      latitude: cityData.latitude,
+      longitude: cityData.longitude,
+      pincode: pincodeData.pincode,
+      pincodes: pincodeData.pincodes.length > 0 
+        ? pincodeData.pincodes 
+        : (pincodeData.pincode ? [pincodeData.pincode] : []),
+    };
 
     res.status(200).json({
       success: true,
-      data: location.toResponse(),
+      data: responseData,
     });
   } catch (error) {
+    console.error("Error fetching location:", error);
     return next(new ErrorHandler("Error fetching location data", 500));
   }
 });
 
 /**
- * Search cities (autocomplete)
- * GET /api/locations/search?q=ahme&country=India
+ * Search cities using country-state-city library (autocomplete)
+ * GET /api/locations/search?q=ahme&countryCode=IN
  */
 exports.searchCities = catchAsyncErrors(async (req, res, next) => {
-  const { q, country, limit = 20 } = req.query;
+  const { q, countryCode = "IN", limit = 50 } = req.query;
 
   if (!q || q.trim() === "") {
     return next(new ErrorHandler("Search query (q) is required", 400));
   }
 
-  const searchQuery = q.trim();
-  const query = {
-    city: { $regex: new RegExp(searchQuery, "i") },
-    isActive: true,
-  };
-
-  if (country) {
-    query.country = { $regex: new RegExp(`^${country.trim()}$`, "i") };
-  }
-
   try {
-    const locations = await Location.find(query)
-      .select("city state country primaryPincode")
-      .limit(parseInt(limit))
-      .sort({ city: 1, state: 1 });
+    // Use library service to search cities
+    const cities = locationService.searchCities(q.trim(), countryCode, parseInt(limit));
 
-    // Group by city name to avoid duplicates in suggestions
-    const cityMap = new Map();
-    locations.forEach((loc) => {
-      const key = `${loc.city.toLowerCase()}_${loc.state.toLowerCase()}_${loc.country.toLowerCase()}`;
-      if (!cityMap.has(key)) {
-        cityMap.set(key, {
-          city: loc.city,
-          state: loc.state,
-          country: loc.country,
-          pincode: loc.primaryPincode,
-        });
-      }
-    });
-
-    const suggestions = Array.from(cityMap.values());
+    // Get pincodes from database for each city (optional - can be slow)
+    // For performance, we'll skip pincode lookup in search results
+    const suggestions = cities.map((city) => ({
+      city: city.city,
+      state: city.state,
+      stateCode: city.stateCode,
+      country: city.country,
+      countryCode: city.countryCode,
+    }));
 
     res.status(200).json({
       success: true,
@@ -127,7 +105,56 @@ exports.searchCities = catchAsyncErrors(async (req, res, next) => {
       count: suggestions.length,
     });
   } catch (error) {
+    console.error("Error searching cities:", error);
     return next(new ErrorHandler("Error searching cities", 500));
+  }
+});
+
+/**
+ * Get all unique cities using library (Public - for dropdown)
+ * GET /api/locations/cities?countryCode=IN&stateCode=GJ
+ */
+exports.getAllCities = catchAsyncErrors(async (req, res, next) => {
+  const { countryCode = "IN", stateCode, limit = 1000 } = req.query;
+
+  try {
+    let cities = [];
+
+    if (stateCode) {
+      // Get cities for specific state
+      cities = locationService.getCitiesByState(stateCode, countryCode);
+    } else {
+      // For large lists, use search with common letters
+      // This is more efficient than loading all cities
+      const commonLetters = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'];
+      const allResults = [];
+      
+      // Get cities starting with each letter
+      for (const letter of commonLetters.slice(0, 10)) { // Limit to first 10 letters for performance
+        const results = locationService.searchCities(letter, countryCode, Math.floor(parseInt(limit) / 10));
+        allResults.push(...results);
+      }
+      
+      // Remove duplicates
+      const uniqueMap = new Map();
+      allResults.forEach((city) => {
+        const key = `${city.city.toLowerCase()}_${city.stateCode}`;
+        if (!uniqueMap.has(key)) {
+          uniqueMap.set(key, city);
+        }
+      });
+      
+      cities = Array.from(uniqueMap.values()).slice(0, parseInt(limit));
+    }
+
+    res.status(200).json({
+      success: true,
+      data: cities,
+      count: cities.length,
+    });
+  } catch (error) {
+    console.error("Error fetching cities:", error);
+    return next(new ErrorHandler("Error fetching cities", 500));
   }
 });
 

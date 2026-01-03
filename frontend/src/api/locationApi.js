@@ -6,82 +6,88 @@ import axiosInstance from "./axiosConfig";
  */
 
 /**
- * Get location by city name
+ * Get location by city name using library
  * @param {string} city - City name
- * @param {string} country - Optional country filter
- * @param {string} state - Optional state filter
+ * @param {string} state - Optional state name for disambiguation
+ * @param {string} countryCode - Country code (default: "IN" for India)
  * @returns {Promise} Location data with city, state, country, pincode(s)
  */
-export const getLocationByCity = async (city, country = null, state = null) => {
+export const getLocationByCity = async (city, state = null, countryCode = "IN") => {
   try {
-    const params = { city };
-    if (country) params.country = country;
+    const params = { city, countryCode };
     if (state) params.state = state;
 
     const response = await axiosInstance.get("/locations", { params });
     return response.data;
   } catch (error) {
-    throw new Error(
-      error.response?.data?.message || "Failed to fetch location data"
-    );
+    // Return error object instead of throwing to allow graceful handling
+    return {
+      success: false,
+      message: error.response?.data?.message || "Failed to fetch location data",
+      data: null,
+    };
   }
 };
 
 /**
- * Search cities for autocomplete
+ * Search cities for autocomplete using library
  * @param {string} query - Search query
- * @param {string} country - Optional country filter
- * @param {number} limit - Maximum results (default: 20)
+ * @param {string} countryCode - Country code (default: "IN" for India)
+ * @param {number} limit - Maximum results (default: 50)
  * @returns {Promise} Array of city suggestions
  */
-export const searchCities = async (query, country = null, limit = 20) => {
+export const searchCities = async (query, countryCode = "IN", limit = 50) => {
   try {
-    const params = { q: query, limit };
-    if (country) params.country = country;
-
-    console.log("🌐 Calling API: /locations/search with params:", params);
-    console.log("🌐 Full URL will be:", axiosInstance.defaults.baseURL + "/locations/search");
+    const params = { q: query, countryCode, limit };
     
-    // Make API call with timeout
     const response = await axiosInstance.get("/locations/search", { 
       params, 
       timeout: 10000 // 10 second timeout
     });
     
-    // Log for debugging
-    console.log("✅ Search cities API response:", response.data);
-    console.log("Response structure:", {
-      success: response.data?.success,
-      data: response.data?.data,
-      dataType: Array.isArray(response.data?.data) ? 'array' : typeof response.data?.data,
-      dataLength: Array.isArray(response.data?.data) ? response.data?.data.length : 'N/A',
-      count: response.data?.count
-    });
-    
     return response.data;
   } catch (error) {
     console.error("❌ Search cities error:", error);
-    console.error("Error status:", error.response?.status);
-    console.error("Error response:", error.response?.data);
-    console.error("Error message:", error.message);
-    console.error("Error code:", error.code);
-    
-    // Check if it's a network error
-    if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
-      console.error("⏱️ Request timed out - backend might be slow or not responding");
-    }
-    if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error')) {
-      console.error("🌐 Network error - backend might not be running");
-    }
-    if (error.response?.status === 404) {
-      console.error("🔍 404 - API endpoint not found. Check if backend route is registered.");
-    }
     
     // Return empty result instead of throwing to allow typing to continue
     return {
       success: false,
       data: [],
       message: error.response?.data?.message || error.message || "Failed to search cities"
+    };
+  }
+};
+
+/**
+ * Get all unique cities for dropdown (Public)
+ * @param {string} country - Optional country filter
+ * @param {number} limit - Maximum results (default: 1000)
+ * @returns {Promise} Array of unique cities
+ */
+export const getAllCities = async (country = null, limit = 1000) => {
+  try {
+    const params = { limit };
+    if (country) params.country = country;
+
+    console.log("🌐 Calling getAllCities API with params:", params);
+    const response = await axiosInstance.get("/locations/cities", { 
+      params,
+      timeout: 15000 // 15 second timeout
+    });
+    
+    console.log("✅ getAllCities API response:", response.data);
+    return response.data;
+  } catch (error) {
+    console.error("❌ getAllCities API error:", error);
+    console.error("Error status:", error.response?.status);
+    console.error("Error response data:", error.response?.data);
+    console.error("Error message:", error.message);
+    
+    // Return error object instead of throwing to allow fallback
+    return {
+      success: false,
+      data: [],
+      message: error.response?.data?.message || error.message || "Failed to fetch cities"
     };
   }
 };

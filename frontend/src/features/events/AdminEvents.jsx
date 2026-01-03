@@ -69,12 +69,17 @@ const AdminEvents = () => {
       announcement: "bg-yellow-100 text-yellow-800",
       link: "bg-green-100 text-green-800",
       youtube: "bg-red-100 text-red-800",
+      instagram: "bg-pink-100 text-pink-800",
     };
     return colors[eventType] || colors.normal;
   };
 
   const getEventTypeLabel = (eventType) => {
-    return eventType.charAt(0).toUpperCase() + eventType.slice(1);
+    const labels = {
+      instagram: "Instagram Post",
+      youtube: "YouTube",
+    };
+    return labels[eventType] || eventType.charAt(0).toUpperCase() + eventType.slice(1);
   };
 
   if (!isAdmin) {
@@ -213,25 +218,64 @@ const AdminEvents = () => {
               </div>
 
               {/* Pagination */}
-              {pagination.pages > 1 && (
-                <div className="mt-6 flex justify-center gap-2">
-                  <Button
-                    variant="outline"
-                    disabled={page === 1}
-                    onClick={() => setPage(page - 1)}
-                  >
-                    Previous
-                  </Button>
-                  <span className="px-4 py-2 text-sm text-gray-600">
-                    Page {page} of {pagination.pages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    disabled={page === pagination.pages}
-                    onClick={() => setPage(page + 1)}
-                  >
-                    Next
-                  </Button>
+              {pagination && pagination.pages > 1 && (
+                <div className="mt-8 flex flex-col items-center gap-4">
+                  <div className="flex items-center justify-center gap-2 flex-wrap">
+                    <Button
+                      variant="outline"
+                      disabled={page === 1 || isLoading}
+                      onClick={() => setPage(page - 1)}
+                      className="min-w-[100px]"
+                    >
+                      Previous
+                    </Button>
+                    
+                    {/* Page Numbers */}
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(5, pagination.pages) }, (_, i) => {
+                        let pageNum;
+                        if (pagination.pages <= 5) {
+                          pageNum = i + 1;
+                        } else if (page <= 3) {
+                          pageNum = i + 1;
+                        } else if (page >= pagination.pages - 2) {
+                          pageNum = pagination.pages - 4 + i;
+                        } else {
+                          pageNum = page - 2 + i;
+                        }
+                        
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => setPage(pageNum)}
+                            disabled={isLoading}
+                            className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors min-w-[40px] ${
+                              page === pageNum
+                                ? "bg-blue-600 text-white"
+                                : "bg-white text-gray-700 hover:bg-gray-100 border border-gray-300"
+                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                            aria-label={`Go to page ${pageNum}`}
+                            aria-current={page === pageNum ? "page" : undefined}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      disabled={page === pagination.pages || isLoading}
+                      onClick={() => setPage(page + 1)}
+                      className="min-w-[100px]"
+                    >
+                      Next
+                    </Button>
+                  </div>
+                  
+                  <p className="text-sm text-gray-600">
+                    Showing page {page} of {pagination.pages} ({pagination.total} total events)
+                  </p>
                 </div>
               )}
             </>

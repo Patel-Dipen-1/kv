@@ -6,6 +6,7 @@ import Card from "../../components/common/Card";
 import Button from "../../components/common/Button";
 import Input from "../../components/common/Input";
 import ErrorAlert from "../../components/common/ErrorAlert";
+import MediaUpload from "../../components/common/MediaUpload";
 import Navbar from "../../components/layout/Navbar";
 import Sidebar from "../../components/layout/Sidebar";
 import { ArrowLeft, Plus, X } from "lucide-react";
@@ -34,8 +35,11 @@ const EventForm = () => {
     },
     media: {
       images: [],
+      videos: [],
       files: [],
       youtubeUrl: "",
+      whatsappNumber: "",
+      whatsappMessage: "",
       externalLink: {
         url: "",
         title: "",
@@ -51,18 +55,40 @@ const EventForm = () => {
 
   const [newPollOption, setNewPollOption] = useState("");
 
+  // Fetch event data when in edit mode
   useEffect(() => {
-    if (isEdit && currentEvent) {
+    if (isEdit && id) {
+      dispatch(getEventById(id));
+    }
+  }, [isEdit, id, dispatch]);
+
+  // Populate form when event data is loaded
+  useEffect(() => {
+    if (isEdit && currentEvent && currentEvent._id === id) {
+      // Helper function to format date for datetime-local input
+      const formatDateForInput = (dateString) => {
+        if (!dateString) return "";
+        try {
+          const date = new Date(dateString);
+          // Get local date/time string in format: YYYY-MM-DDTHH:mm
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, "0");
+          const day = String(date.getDate()).padStart(2, "0");
+          const hours = String(date.getHours()).padStart(2, "0");
+          const minutes = String(date.getMinutes()).padStart(2, "0");
+          return `${year}-${month}-${day}T${hours}:${minutes}`;
+        } catch (error) {
+          console.error("Error formatting date:", error);
+          return "";
+        }
+      };
+
       setFormData({
         title: currentEvent.title || "",
         description: currentEvent.description || "",
         eventType: currentEvent.eventType || "normal",
-        startDate: currentEvent.startDate
-          ? new Date(currentEvent.startDate).toISOString().slice(0, 16)
-          : "",
-        endDate: currentEvent.endDate
-          ? new Date(currentEvent.endDate).toISOString().slice(0, 16)
-          : "",
+        startDate: formatDateForInput(currentEvent.startDate),
+        endDate: formatDateForInput(currentEvent.endDate),
         settings: {
           commentEnabled: currentEvent.settings?.commentEnabled !== false,
           pollEnabled: currentEvent.settings?.pollEnabled === true,
@@ -70,8 +96,11 @@ const EventForm = () => {
         },
         media: {
           images: currentEvent.media?.images || [],
+          videos: currentEvent.media?.videos || [],
           files: currentEvent.media?.files || [],
           youtubeUrl: currentEvent.media?.youtubeUrl || "",
+          whatsappNumber: currentEvent.media?.whatsappNumber || "",
+          whatsappMessage: currentEvent.media?.whatsappMessage || "",
           externalLink: currentEvent.media?.externalLink || {
             url: "",
             title: "",
@@ -81,11 +110,11 @@ const EventForm = () => {
         },
         poll: {
           question: currentEvent.poll?.question || "",
-          options: currentEvent.poll?.options?.map((opt) => opt.text) || [],
+          options: currentEvent.poll?.options?.map((opt) => opt.text || opt) || [],
         },
       });
     }
-  }, [isEdit, currentEvent]);
+  }, [isEdit, currentEvent, id]);
 
   useEffect(() => {
     if (error) {
@@ -183,6 +212,36 @@ const EventForm = () => {
       return;
     }
 
+    // Process media files - convert File objects to data URLs if needed
+    const processedMedia = {
+      ...formData.media,
+      images: formData.media.images.map((img) => {
+        // If it's already a URL string, use it
+        if (typeof img === "string") {
+          return { url: img, caption: "" };
+        }
+        // If it has a file property, it's a new upload - use the preview URL
+        // In production, you'd upload the file first and get a URL
+        return {
+          url: img.url || img,
+          caption: img.caption || "",
+        };
+      }),
+      videos: (formData.media.videos || []).map((vid) => {
+        // If it's already a URL string, use it
+        if (typeof vid === "string") {
+          return { url: vid, name: "", size: 0 };
+        }
+        // If it has a file property, it's a new upload - use the preview URL
+        // In production, you'd upload the file first and get a URL
+        return {
+          url: vid.url || vid,
+          name: vid.name || "",
+          size: vid.size || 0,
+        };
+      }),
+    };
+
     const eventData = {
       title: formData.title.trim(),
       description: formData.description.trim(),
@@ -190,7 +249,7 @@ const EventForm = () => {
       startDate: formData.startDate,
       endDate: formData.endDate || undefined,
       settings: formData.settings,
-      media: formData.media,
+      media: processedMedia,
     };
 
     if (formData.settings.pollEnabled) {
@@ -278,6 +337,7 @@ const EventForm = () => {
                   <option value="announcement">Announcement</option>
                   <option value="link">Link</option>
                   <option value="youtube">YouTube</option>
+                  <option value="instagram">Instagram Post</option>
                 </select>
               </div>
 
@@ -310,6 +370,55 @@ const EventForm = () => {
                 </div>
               </div>
 
+              {/* Media - Images and Videos Upload */}
+              <div className="border rounded-lg p-4">
+                <h3 className="font-semibold mb-3">Images & Videos</h3>
+                <MediaUpload
+                  label="Upload Images and Videos"
+                  accept="image/jpeg,image/jpg,image/png,image/webp,video/mp4,video/webm,video/quicktime,video/mov"
+                  maxSize={50 * 1024 * 1024} // 50MB
+                  maxFiles={20}
+                  multiple={true}
+                  value={[
+                    ...(formData.media.images || []).map((img) => ({
+                      url: img.url || img,
+                      type: "image",
+                      caption: img.caption || "",
+                    })),
+                    ...(formData.media.videos || []).map((vid) => ({
+                      url: vid.url || vid,
+                      type: "video",
+                      name: vid.name || "",
+                      size: vid.size || 0,
+                    })),
+                  ]}
+                  onChange={(files) => {
+                    const images = files
+                      .filter((f) => f.type === "image")
+                      .map((f) => ({
+                        url: f.url,
+                        caption: f.caption || "",
+                      }));
+                    const videos = files
+                      .filter((f) => f.type === "video")
+                      .map((f) => ({
+                        url: f.url,
+                        name: f.name || "",
+                        size: f.size || 0,
+                      }));
+                    setFormData({
+                      ...formData,
+                      media: {
+                        ...formData.media,
+                        images,
+                        videos,
+                      },
+                    });
+                  }}
+                  showCaptions={true}
+                />
+              </div>
+
               {/* Media - YouTube URL */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -321,6 +430,41 @@ const EventForm = () => {
                   onChange={handleChange}
                   placeholder="https://www.youtube.com/watch?v=..."
                 />
+              </div>
+
+              {/* Media - WhatsApp Contact */}
+              <div className="border rounded-lg p-4">
+                <h3 className="font-semibold mb-3">WhatsApp Contact</h3>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      WhatsApp Number
+                    </label>
+                    <Input
+                      name="media.whatsappNumber"
+                      value={formData.media.whatsappNumber || ""}
+                      onChange={handleChange}
+                      placeholder="+91 9876543210 or 9876543210"
+                      type="tel"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Enter phone number with country code (e.g., +91 for India)
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Pre-filled Message (Optional)
+                    </label>
+                    <textarea
+                      name="media.whatsappMessage"
+                      value={formData.media.whatsappMessage || ""}
+                      onChange={handleChange}
+                      rows={2}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Hello! I'm interested in this event..."
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Media - External Link */}

@@ -3,6 +3,7 @@ const router = express.Router();
 const {
   getLocationByCity,
   searchCities,
+  getAllCities,
   getAllLocations,
   createLocation,
   updateLocation,
@@ -23,6 +24,13 @@ router.get("/", getLocationByCity);
  * @access  Public
  */
 router.get("/search", searchCities);
+
+/**
+ * @route   GET /api/locations/cities?country=India
+ * @desc    Get all unique cities for dropdown (Public)
+ * @access  Public
+ */
+router.get("/cities", getAllCities);
 
 /**
  * @route   GET /api/locations/all
