@@ -26,17 +26,20 @@ import ActivityLog from "./features/admin/ActivityLog";
 import EnumManagement from "./features/admin/EnumManagement";
 import RoleManagement from "./features/admin/RoleManagement";
 import DeletedUsers from "./features/admin/DeletedUsers";
+import AllUsersManagement from "./features/admin/AllUsersManagement";
 
 // Committee Page (Public)
 import Committee from "./features/committee/Committee";
 
 // Family Connections
 import FamilyConnections from "./features/relationships/FamilyConnections";
+import FamilyMembersList from "./features/family/FamilyMembersList";
 
 // Event Pages
 import EventList from "./features/events/EventList";
 import EventDetail from "./features/events/EventDetail";
-import CreateEventForm from "./features/events/CreateEventForm";
+import AdminEvents from "./features/events/AdminEvents";
+import EventForm from "./features/events/EventForm";
 
 // Components
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -79,6 +82,7 @@ function App() {
           <Route path="/profile/edit" element={<UpdateProfile />} />
           <Route path="/profile/change-password" element={<ChangePassword />} />
           <Route path="/family-connections" element={<FamilyConnections />} />
+          <Route path="/family-members/:subFamilyNumber?" element={<FamilyMembersList />} />
         </Route>
 
         {/* Protected Admin Routes - Using Permissions */}
@@ -91,6 +95,7 @@ function App() {
         <Route element={<ProtectedRoute requiredPermission="canViewUsers" />}>
           <Route path="/admin/approved" element={<ApprovedUsers />} />
           <Route path="/admin/rejected" element={<RejectedUsers />} />
+          <Route path="/admin/all-users" element={<AllUsersManagement />} />
         </Route>
         <Route element={<ProtectedRoute requiredPermission="canApproveFamilyMembers" />}>
           <Route path="/admin/pending-family" element={<PendingFamilyMembers />} />
@@ -111,13 +116,17 @@ function App() {
           <Route path="/admin/deleted-users" element={<DeletedUsers />} />
         </Route>
 
-        {/* Event Routes - Accessible to all logged-in users */}
+        {/* Event Routes */}
         <Route element={<ProtectedRoute />}>
           <Route path="/events" element={<EventList />} />
           <Route path="/events/:id" element={<EventDetail />} />
         </Route>
-        <Route element={<ProtectedRoute requiredPermission="canCreateEvents" />}>
-          <Route path="/events/create" element={<CreateEventForm />} />
+        
+        {/* Admin Event Routes */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/admin/events" element={<AdminEvents />} />
+          <Route path="/admin/events/create" element={<EventForm />} />
+          <Route path="/admin/events/:id/edit" element={<EventForm />} />
         </Route>
 
         {/* Default Route */}

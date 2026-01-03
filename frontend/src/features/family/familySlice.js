@@ -117,11 +117,40 @@ export const rejectFamilyMember = createAsyncThunk(
   }
 );
 
+// Get combined family members (Users + FamilyMembers) by subFamilyNumber
+export const getCombinedFamilyMembers = createAsyncThunk(
+  "family/getCombinedFamilyMembers",
+  async ({ subFamilyNumber, page = 1, limit = 10, search = "", type = "all" }, { rejectWithValue }) => {
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: limit.toString(),
+        search,
+        type,
+      });
+      const { data } = await axiosInstance.get(
+        `/users/family-complete/${subFamilyNumber}?${params.toString()}`
+      );
+      return data.data;
+    } catch (error) {
+      return rejectWithValue(
+        error.response?.data?.message ||
+        error.response?.data?.errors?.[0]?.message ||
+        "Failed to fetch family members"
+      );
+    }
+  }
+);
+
 const familySlice = createSlice({
   name: "family",
   initialState: {
     myFamilyMembers: [],
     pendingFamilyMembers: [],
+    combinedFamilyMembers: [],
+    combinedCurrentPage: 1,
+    combinedTotalPages: 1,
+    combinedTotal: 0,
     currentPage: 1,
     totalPages: 1,
     total: 0,
@@ -257,6 +286,25 @@ const familySlice = createSlice({
         state.error = null;
       })
       .addCase(rejectFamilyMember.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload;
+      });
+
+    // Get Combined Family Members
+    builder
+      .addCase(getCombinedFamilyMembers.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(getCombinedFamilyMembers.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.combinedFamilyMembers = action.payload.members || [];
+        state.combinedCurrentPage = action.payload.pagination?.currentPage || 1;
+        state.combinedTotalPages = action.payload.pagination?.totalPages || 1;
+        state.combinedTotal = action.payload.pagination?.total || 0;
+        state.error = null;
+      })
+      .addCase(getCombinedFamilyMembers.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload;
       });

@@ -583,3 +583,151 @@ exports.getAllFamilyMembersBySubFamily = catchAsyncErrors(
   }
 );
 
+/**
+ * Update family member (Admin only - can update any family member)
+ * PATCH /api/admin/family-members/:id
+ */
+exports.adminUpdateFamilyMember = catchAsyncErrors(async (req, res, next) => {
+  const { id } = req.params;
+
+  const familyMember = await FamilyMember.findById(id);
+
+  if (!familyMember) {
+    return next(new ErrorHandler("Family member not found", 404));
+  }
+
+  // Calculate age from dateOfBirth if provided
+  if (req.body.dateOfBirth) {
+    const dob = new Date(req.body.dateOfBirth);
+    const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const monthDiff = today.getMonth() - dob.getMonth();
+    if (
+      monthDiff < 0 ||
+      (monthDiff === 0 && today.getDate() < dob.getDate())
+    ) {
+      age--;
+    }
+    req.body.age = age;
+  }
+
+  // Format mobile number if provided
+  if (req.body.mobileNumber) {
+    const cleaned = req.body.mobileNumber.replace(/^\+91/, "").replace(/\s/g, "");
+    if (/^\d{10}$/.test(cleaned)) {
+      req.body.mobileNumber = `+91${cleaned}`;
+    } else {
+      return next(new ErrorHandler("Invalid mobile number format", 400));
+    }
+  }
+
+  // Format email if provided
+  if (req.body.email) {
+    req.body.email = req.body.email.toLowerCase().trim();
+  }
+
+  // Update allowed fields (admin can also update approvalStatus)
+  const allowedFields = [
+    "firstName",
+    "middleName",
+    "lastName",
+    "dateOfBirth",
+    "age",
+    "mobileNumber",
+    "email",
+    "maritalStatus",
+    "occupationType",
+    "occupationTitle",
+    "qualification",
+    "profileImage",
+    "relationshipToUser",
+    "approvalStatus", // Admin can update approval status
+  ];
+
+  const updateData = {};
+  allowedFields.forEach((field) => {
+    if (req.body[field] !== undefined) {
+      updateData[field] = req.body[field];
+    }
+  });
+
+  const updatedMember = await FamilyMember.findByIdAndUpdate(
+    id,
+    updateData,
+    {
+      new: true,
+      runValidators: true,
+    }
+  )
+    .populate("userId", "firstName lastName email subFamilyNumber")
+    .lean();
+
+  // Log activity
+  const ipAddress = req.ip || req.connection.remoteAddress;
+  await logActivity({
+    performedBy: req.user.id,
+    actionType: "family_member_updated",
+    targetUser: familyMember.userId,
+    targetFamilyMember: id,
+    details: {
+      familyMemberName: `${updatedMember.firstName} ${updatedMember.lastName}`,
+      updatedFields: Object.keys(updateData),
+    },
+    description: `Family member ${updatedMember.firstName} ${updatedMember.lastName} updated by admin`,
+    ipAddress,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "Family member updated successfully",
+    data: updatedMember,
+  });
+});
+
+/**
+ * Delete family member (Admin only - can delete any family member)
+ * DELETE /api/admin/family-members/:id
+ */
+exports.adminDeleteFamilyMember = catchAsyncErrors(async (req, res, next) => {
+  const { id } = req.params;
+
+  const familyMember = await FamilyMember.findById(id);
+
+  if (!familyMember) {
+    return next(new ErrorHandler("Family member not found", 404));
+  }
+
+  const familyMemberData = {
+    name: `${familyMember.firstName} ${familyMember.lastName}`,
+    userId: familyMember.userId,
+  };
+
+  // Delete family member
+  await FamilyMember.findByIdAndDelete(id);
+
+  // Update user's familyMembers array and count if exists
+  await User.findByIdAndUpdate(familyMember.userId, {
+    $pull: { familyMembers: id },
+    $inc: { familyMembersCount: -1 },
+  });
+
+  // Log activity
+  const ipAddress = req.ip || req.connection.remoteAddress;
+  await logActivity({
+    performedBy: req.user.id,
+    actionType: "family_member_deleted",
+    targetUser: familyMember.userId,
+    targetFamilyMember: id,
+    details: {
+      familyMemberName: familyMemberData.name,
+    },
+    description: `Family member ${familyMemberData.name} deleted by admin`,
+    ipAddress,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "Family member deleted successfully",
+  });
+});
+

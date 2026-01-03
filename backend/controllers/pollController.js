@@ -1,5 +1,4 @@
 const Poll = require("../models/pollModel");
-const Event = require("../models/eventModel");
 const ErrorHandler = require("../utils/errorhander");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 
@@ -18,13 +17,7 @@ exports.createPoll = catchAsyncErrors(async (req, res, next) => {
     return next(new ErrorHandler("You don't have permission to create polls", 403));
   }
 
-  // Verify event exists (if eventId provided)
-  if (eventId && eventId !== "null") {
-    const event = await Event.findById(eventId);
-    if (!event) {
-      return next(new ErrorHandler("Event not found", 404));
-    }
-  }
+  // Event functionality removed - polls are now standalone only
 
   const {
     question,
@@ -64,7 +57,6 @@ exports.createPoll = catchAsyncErrors(async (req, res, next) => {
   const pollData = {
     question,
     description,
-    eventId: eventId && eventId !== "null" ? eventId : undefined,
     pollType: pollType || "single_choice",
     options: options.map((opt, index) => ({
       optionText: opt,
@@ -85,13 +77,6 @@ exports.createPoll = catchAsyncErrors(async (req, res, next) => {
 
   const poll = await Poll.create(pollData);
 
-  // Update event poll count if linked
-  if (eventId && eventId !== "null") {
-    await Event.findByIdAndUpdate(eventId, {
-      $inc: { pollCount: 1 },
-    });
-  }
-
   res.status(201).json({
     success: true,
     message: "Poll created successfully",
@@ -100,36 +85,20 @@ exports.createPoll = catchAsyncErrors(async (req, res, next) => {
 });
 
 /**
- * Get polls for an event
+ * Get polls for an event (deprecated - events removed, returns all polls)
  * GET /api/polls/event/:eventId
  */
 exports.getPollsByEvent = catchAsyncErrors(async (req, res, next) => {
-  const { eventId } = req.params;
   const user = req.user;
 
-  // Validate eventId is a valid ObjectId (skip if null/standalone poll)
-  if (eventId && eventId !== "null" && eventId !== "undefined") {
-    if (!eventId.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(200).json({
-        success: true,
-        count: 0,
-        data: [],
-      });
-    }
-  }
-
+  // Event functionality removed - return all polls
   const query = {
     isActive: true,
     status: { $in: ["active", "closed"] },
   };
 
-  if (eventId && eventId !== "null") {
-    query.eventId = eventId;
-  }
-
   const polls = await Poll.find(query)
     .populate("createdBy", "firstName lastName")
-    .populate("eventId", "eventName")
     .sort({ createdAt: -1 });
 
   // Filter by access control
@@ -154,7 +123,6 @@ exports.getPollById = catchAsyncErrors(async (req, res, next) => {
 
   const poll = await Poll.findById(pollId)
     .populate("createdBy", "firstName lastName")
-    .populate("eventId", "eventName startDate")
     .populate("options.voters", "firstName lastName");
 
   if (!poll) {
@@ -401,12 +369,7 @@ exports.deletePoll = catchAsyncErrors(async (req, res, next) => {
     );
   }
 
-  // Update event poll count if linked
-  if (poll.eventId) {
-    await Event.findByIdAndUpdate(poll.eventId, {
-      $inc: { pollCount: -1 },
-    });
-  }
+  // Event functionality removed
 
   // Soft delete
   poll.isActive = false;

@@ -2,41 +2,18 @@ import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axiosInstance from "../../api/axiosConfig";
 
 /**
- * Create new event
- * POST /api/events
- */
-export const createEvent = createAsyncThunk(
-  "events/createEvent",
-  async (eventData, { rejectWithValue }) => {
-    try {
-      const { data } = await axiosInstance.post("/events", eventData);
-      return data.data;
-    } catch (error) {
-      return rejectWithValue(
-        error.response?.data?.message || "Failed to create event"
-      );
-    }
-  }
-);
-
-/**
  * Get all events
  * GET /api/events
  */
 export const getAllEvents = createAsyncThunk(
   "events/getAllEvents",
-  async (filters = {}, { rejectWithValue }) => {
+  async ({ page = 1, limit = 20, eventType, visibility } = {}, { rejectWithValue }) => {
     try {
       const params = new URLSearchParams();
-      Object.keys(filters).forEach((key) => {
-        if (filters[key] !== undefined && filters[key] !== null && filters[key] !== "") {
-          if (Array.isArray(filters[key])) {
-            filters[key].forEach((val) => params.append(key, val));
-          } else {
-            params.append(key, filters[key]);
-          }
-        }
-      });
+      if (page) params.append("page", page);
+      if (limit) params.append("limit", limit);
+      if (eventType) params.append("eventType", eventType);
+      if (visibility) params.append("visibility", visibility);
 
       const { data } = await axiosInstance.get(`/events?${params.toString()}`);
       return data;
@@ -49,7 +26,7 @@ export const getAllEvents = createAsyncThunk(
 );
 
 /**
- * Get single event by ID
+ * Get single event
  * GET /api/events/:id
  */
 export const getEventById = createAsyncThunk(
@@ -67,14 +44,32 @@ export const getEventById = createAsyncThunk(
 );
 
 /**
- * Update event
- * PATCH /api/events/:id
+ * Create event (Admin only)
+ * POST /api/events
+ */
+export const createEvent = createAsyncThunk(
+  "events/createEvent",
+  async (eventData, { rejectWithValue }) => {
+    try {
+      const { data } = await axiosInstance.post("/events", eventData);
+      return data.data;
+    } catch (error) {
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to create event"
+      );
+    }
+  }
+);
+
+/**
+ * Update event (Admin only)
+ * PUT /api/events/:id
  */
 export const updateEvent = createAsyncThunk(
   "events/updateEvent",
   async ({ eventId, eventData }, { rejectWithValue }) => {
     try {
-      const { data } = await axiosInstance.patch(`/events/${eventId}`, eventData);
+      const { data } = await axiosInstance.put(`/events/${eventId}`, eventData);
       return data.data;
     } catch (error) {
       return rejectWithValue(
@@ -85,7 +80,7 @@ export const updateEvent = createAsyncThunk(
 );
 
 /**
- * Delete event
+ * Delete event (Admin only)
  * DELETE /api/events/:id
  */
 export const deleteEvent = createAsyncThunk(
@@ -103,82 +98,72 @@ export const deleteEvent = createAsyncThunk(
 );
 
 /**
- * Add media to event
- * POST /api/events/:id/media
+ * Toggle like
+ * POST /api/events/:id/like
  */
-export const addEventMedia = createAsyncThunk(
-  "events/addEventMedia",
-  async ({ eventId, mediaType, mediaData }, { rejectWithValue }) => {
+export const toggleLike = createAsyncThunk(
+  "events/toggleLike",
+  async (eventId, { rejectWithValue }) => {
     try {
-      const { data } = await axiosInstance.post(`/events/${eventId}/media`, {
-        mediaType,
-        mediaData,
-      });
-      return data.data;
+      const { data } = await axiosInstance.post(`/events/${eventId}/like`);
+      return { eventId, ...data.data };
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Failed to add media"
+        error.response?.data?.message || "Failed to toggle like"
       );
     }
   }
 );
 
 /**
- * Remove media from event
- * DELETE /api/events/:id/media/:mediaId
+ * Add comment
+ * POST /api/events/:id/comment
  */
-export const removeEventMedia = createAsyncThunk(
-  "events/removeEventMedia",
-  async ({ eventId, mediaId, mediaType }, { rejectWithValue }) => {
+export const addComment = createAsyncThunk(
+  "events/addComment",
+  async ({ eventId, text }, { rejectWithValue }) => {
     try {
-      await axiosInstance.delete(`/events/${eventId}/media/${mediaId}?mediaType=${mediaType}`);
-      return { eventId, mediaId, mediaType };
+      const { data } = await axiosInstance.post(`/events/${eventId}/comment`, { text });
+      return { eventId, comment: data.data };
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Failed to remove media"
+        error.response?.data?.message || "Failed to add comment"
       );
     }
   }
 );
 
 /**
- * RSVP to event
- * POST /api/events/:id/rsvp
+ * Delete comment
+ * DELETE /api/events/:id/comment/:commentId
  */
-export const rsvpToEvent = createAsyncThunk(
-  "events/rsvpToEvent",
-  async ({ eventId, response }, { rejectWithValue }) => {
+export const deleteComment = createAsyncThunk(
+  "events/deleteComment",
+  async ({ eventId, commentId }, { rejectWithValue }) => {
     try {
-      const { data } = await axiosInstance.post(`/events/${eventId}/rsvp`, {
-        response,
-      });
-      return { eventId, rsvpCounts: data.data };
+      await axiosInstance.delete(`/events/${eventId}/comment/${commentId}`);
+      return { eventId, commentId };
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Failed to record RSVP"
+        error.response?.data?.message || "Failed to delete comment"
       );
     }
   }
 );
 
 /**
- * Get my events
- * GET /api/events/my
+ * Vote in poll
+ * POST /api/events/:id/vote
  */
-export const getMyEvents = createAsyncThunk(
-  "events/getMyEvents",
-  async (filters = {}, { rejectWithValue }) => {
+export const voteInPoll = createAsyncThunk(
+  "events/voteInPoll",
+  async ({ eventId, optionId }, { rejectWithValue }) => {
     try {
-      const params = new URLSearchParams();
-      Object.keys(filters).forEach((key) => {
-        if (filters[key]) params.append(key, filters[key]);
-      });
-
-      const { data } = await axiosInstance.get(`/events/my?${params.toString()}`);
-      return data;
+      const { data } = await axiosInstance.post(`/events/${eventId}/vote`, { optionId });
+      return { eventId, ...data.data };
     } catch (error) {
       return rejectWithValue(
-        error.response?.data?.message || "Failed to fetch your events"
+        error.response?.data?.message || "Failed to vote"
       );
     }
   }
@@ -187,20 +172,11 @@ export const getMyEvents = createAsyncThunk(
 const initialState = {
   events: [],
   currentEvent: null,
-  myEvents: [],
   isLoading: false,
   error: null,
-  filters: {
-    eventType: "",
-    status: "",
-    startDate: "",
-    endDate: "",
-    city: "",
-    search: "",
-  },
   pagination: {
     page: 1,
-    limit: 50, // Increased to show more events
+    limit: 20,
     total: 0,
     pages: 0,
   },
@@ -216,28 +192,9 @@ const eventSlice = createSlice({
     clearCurrentEvent: (state) => {
       state.currentEvent = null;
     },
-    setFilters: (state, action) => {
-      state.filters = { ...state.filters, ...action.payload };
-    },
-    resetFilters: (state) => {
-      state.filters = initialState.filters;
-    },
   },
   extraReducers: (builder) => {
     builder
-      // Create event
-      .addCase(createEvent.pending, (state) => {
-        state.isLoading = true;
-        state.error = null;
-      })
-      .addCase(createEvent.fulfilled, (state, action) => {
-        state.isLoading = false;
-        state.events.unshift(action.payload);
-      })
-      .addCase(createEvent.rejected, (state, action) => {
-        state.isLoading = false;
-        state.error = action.payload;
-      })
       // Get all events
       .addCase(getAllEvents.pending, (state) => {
         state.isLoading = true;
@@ -267,6 +224,19 @@ const eventSlice = createSlice({
         state.currentEvent = action.payload;
       })
       .addCase(getEventById.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload;
+      })
+      // Create event
+      .addCase(createEvent.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(createEvent.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.events.unshift(action.payload);
+      })
+      .addCase(createEvent.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload;
       })
@@ -307,62 +277,52 @@ const eventSlice = createSlice({
         state.isLoading = false;
         state.error = action.payload;
       })
-      // Add media
-      .addCase(addEventMedia.fulfilled, (state, action) => {
-        const index = state.events.findIndex(
-          (e) => e._id === action.payload._id
-        );
-        if (index !== -1) {
-          state.events[index] = action.payload;
-        }
-        if (state.currentEvent?._id === action.payload._id) {
-          state.currentEvent = action.payload;
-        }
-      })
-      // Remove media
-      .addCase(removeEventMedia.fulfilled, (state, action) => {
+      // Toggle like
+      .addCase(toggleLike.fulfilled, (state, action) => {
         const event = state.events.find((e) => e._id === action.payload.eventId);
         if (event) {
-          if (action.payload.mediaType === "photo") {
-            event.photos = event.photos.filter(
-              (p) => p._id.toString() !== action.payload.mediaId
-            );
-          } else if (action.payload.mediaType === "video") {
-            event.videos = event.videos.filter(
-              (v) => v._id.toString() !== action.payload.mediaId
-            );
-          } else if (action.payload.mediaType === "youtube") {
-            event.youtubeLinks = event.youtubeLinks.filter(
-              (l) => l._id.toString() !== action.payload.mediaId
+          event.likeCount = action.payload.likeCount;
+        }
+        if (state.currentEvent?._id === action.payload.eventId) {
+          state.currentEvent.likeCount = action.payload.likeCount;
+          // Update likes array
+          if (action.payload.isLiked) {
+            state.currentEvent.likes.push({ userId: action.payload.userId });
+          } else {
+            state.currentEvent.likes = state.currentEvent.likes.filter(
+              (like) => like.userId._id !== action.payload.userId
             );
           }
         }
       })
-      // RSVP
-      .addCase(rsvpToEvent.fulfilled, (state, action) => {
-        const event = state.events.find((e) => e._id === action.payload.eventId);
-        if (event) {
-          event.rsvpCounts = action.payload.rsvpCounts;
-        }
+      // Add comment
+      .addCase(addComment.fulfilled, (state, action) => {
         if (state.currentEvent?._id === action.payload.eventId) {
-          state.currentEvent.rsvpCounts = action.payload.rsvpCounts;
+          state.currentEvent.comments.push(action.payload.comment);
+          state.currentEvent.commentCount += 1;
         }
       })
-      // Get my events
-      .addCase(getMyEvents.pending, (state) => {
-        state.isLoading = true;
+      // Delete comment
+      .addCase(deleteComment.fulfilled, (state, action) => {
+        if (state.currentEvent?._id === action.payload.eventId) {
+          state.currentEvent.comments = state.currentEvent.comments.filter(
+            (c) => c._id !== action.payload.commentId
+          );
+          state.currentEvent.commentCount = Math.max(
+            0,
+            state.currentEvent.commentCount - 1
+          );
+        }
       })
-      .addCase(getMyEvents.fulfilled, (state, action) => {
-        state.isLoading = false;
-        state.myEvents = action.payload.data || [];
-      })
-      .addCase(getMyEvents.rejected, (state) => {
-        state.isLoading = false;
+      // Vote in poll
+      .addCase(voteInPoll.fulfilled, (state, action) => {
+        if (state.currentEvent?._id === action.payload.eventId) {
+          state.currentEvent.poll = action.payload.poll;
+        }
       });
   },
 });
 
-export const { clearError, clearCurrentEvent, setFilters, resetFilters } =
-  eventSlice.actions;
+export const { clearError, clearCurrentEvent } = eventSlice.actions;
 export default eventSlice.reducer;
 

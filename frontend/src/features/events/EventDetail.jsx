@@ -1,120 +1,77 @@
 import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { getEventById, rsvpToEvent } from "./eventSlice";
-import { getPollsByEvent } from "../../features/polls/pollSlice";
-import { getCommentsByEvent } from "../../features/comments/commentSlice";
-import { usePermission } from "../../hooks/usePermission";
+import {
+  getEventById,
+  toggleLike,
+  addComment,
+  deleteComment,
+  voteInPoll,
+  clearError,
+} from "./eventSlice";
 import Card from "../../components/common/Card";
 import Button from "../../components/common/Button";
 import Loader from "../../components/common/Loader";
 import ErrorAlert from "../../components/common/ErrorAlert";
+import Input from "../../components/common/Input";
 import Navbar from "../../components/layout/Navbar";
-import Sidebar from "../../components/layout/Sidebar";
 import {
   Calendar,
-  MapPin,
-  Edit,
-  Trash2,
-  Video,
-  Image as ImageIcon,
+  Heart,
+  MessageCircle,
   ArrowLeft,
+  Image as ImageIcon,
+  Trash2,
+  Send,
+  Video,
+  Link as LinkIcon,
 } from "lucide-react";
 import { format } from "date-fns";
-import PollCard from "../../features/polls/PollCard";
-import CommentSection from "../../features/comments/CommentSection";
+import { toast } from "react-toastify";
 
 const EventDetail = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
   const dispatch = useDispatch();
   const { currentEvent, isLoading, error } = useSelector((state) => state.events);
-  const { polls } = useSelector((state) => state.polls);
   const { user } = useSelector((state) => state.auth);
 
-  const canEditEvents = usePermission("canEditEvents");
-  const canDeleteEvents = usePermission("canDeleteEvents");
+  const [commentText, setCommentText] = useState("");
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
 
-  const [rsvpResponse, setRsvpResponse] = useState(null);
-  const [activeTab, setActiveTab] = useState("details");
+  const isAdmin = user?.role === "admin" || user?.roleRef?.roleKey === "admin";
 
   useEffect(() => {
-    // Only fetch data if id is a valid MongoDB ObjectId (24 hex characters)
-    // Skip if id is "create" or other non-ObjectId values
-    if (id && id.match(/^[0-9a-fA-F]{24}$/)) {
-      dispatch(getEventById(id))
-        .then((result) => {
-          if (getEventById.fulfilled.match(result)) {
-            // Set initial RSVP response if user has already RSVP'd
-            const event = result.payload;
-            if (event.rsvp && event.rsvp.length > 0 && user) {
-              const userRSVP = event.rsvp.find(
-                (r) => r.userId && r.userId.toString() === user._id
-              );
-              if (userRSVP) {
-                setRsvpResponse(userRSVP.response);
-              }
-            }
-            // Fetch polls and comments
-            dispatch(getPollsByEvent(id));
-            dispatch(getCommentsByEvent({ eventId: id }));
-          }
-        })
-        .catch((error) => {
-          console.error("Error fetching event:", error);
-        });
+    if (id) {
+      dispatch(getEventById(id));
     }
-  }, [dispatch, id, user]);
+  }, [dispatch, id]);
 
-  const handleRSVP = async (response) => {
-    const result = await dispatch(rsvpToEvent({ eventId: id, response }));
-    if (rsvpToEvent.fulfilled.match(result)) {
-      setRsvpResponse(response);
+  useEffect(() => {
+    if (error) {
+      toast.error(error);
+      dispatch(clearError());
     }
-  };
+  }, [error, dispatch]);
 
-  const getEventTypeBadge = (eventType) => {
-    const badges = {
-      funeral: "bg-gray-100 text-gray-800",
-      condolence: "bg-gray-100 text-gray-800",
-      festival: "bg-yellow-100 text-yellow-800",
-      marriage: "bg-pink-100 text-pink-800",
-      youtube_live: "bg-red-100 text-red-800",
-      religious: "bg-purple-100 text-purple-800",
-    };
-    return badges[eventType] || "bg-blue-100 text-blue-800";
-  };
-
-  const getEventTypeLabel = (eventType) => {
-    return eventType
-      .split("_")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(" ");
-  };
-
-  if (isLoading && !currentEvent) {
+  if (isLoading) {
     return (
       <>
         <Navbar />
-        <Sidebar />
-        <div className="min-h-screen bg-gray-50 md:ml-64">
-          <div className="p-4 md:p-8">
-            <div className="flex justify-center py-12">
-              <Loader size="lg" />
-            </div>
-          </div>
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <Loader size="lg" />
         </div>
       </>
     );
   }
 
-  if (error && !currentEvent) {
+  if (!currentEvent) {
     return (
       <>
         <Navbar />
-        <Sidebar />
-        <div className="min-h-screen bg-gray-50 md:ml-64">
-          <div className="p-4 md:p-8">
-            <ErrorAlert message={error} />
+        <div className="min-h-screen bg-gray-50">
+          <div className="max-w-4xl mx-auto p-4 md:p-8">
+            <ErrorAlert message="Event not found" />
             <Link to="/events">
               <Button variant="outline" className="mt-4">
                 <ArrowLeft size={18} className="mr-2" />
@@ -127,311 +84,343 @@ const EventDetail = () => {
     );
   }
 
-  if (!currentEvent) {
-    return null;
-  }
+  const hasUserLiked = user
+    ? currentEvent.likes?.some(
+        (like) => like.userId?._id === user.id || like.userId?._id === user._id
+      )
+    : false;
 
-  const isCreator = user?.id === currentEvent.createdBy?._id;
-  const canEdit = isCreator || canEditEvents;
-  const canDelete = isCreator || canDeleteEvents;
+  const getUserVote = () => {
+    if (!user || !currentEvent.poll?.options) return null;
+    for (const option of currentEvent.poll.options) {
+      if (
+        option.votes?.some(
+          (vote) =>
+            vote.userId?._id === user.id ||
+            vote.userId?._id === user._id ||
+            vote.userId === user.id ||
+            vote.userId === user._id
+        )
+      ) {
+        return { optionId: option._id.toString(), optionText: option.text };
+      }
+    }
+    return null;
+  };
+  const userVote = getUserVote();
+
+  const handleLike = async () => {
+    if (!user) {
+      toast.error("Please login to like events");
+      return;
+    }
+    await dispatch(toggleLike(id));
+  };
+
+  const handleAddComment = async (e) => {
+    e.preventDefault();
+    if (!commentText.trim()) {
+      toast.error("Please enter a comment");
+      return;
+    }
+    if (!user) {
+      toast.error("Please login to comment");
+      return;
+    }
+    setIsSubmittingComment(true);
+    try {
+      await dispatch(addComment({ eventId: id, text: commentText }));
+      setCommentText("");
+      toast.success("Comment added successfully");
+      // Refresh event to get updated comments
+      await dispatch(getEventById(id));
+    } catch (error) {
+      // Error handled by slice
+    } finally {
+      setIsSubmittingComment(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    if (!window.confirm("Are you sure you want to delete this comment?")) {
+      return;
+    }
+    try {
+      await dispatch(deleteComment({ eventId: id, commentId }));
+      toast.success("Comment deleted successfully");
+      // Refresh event
+      await dispatch(getEventById(id));
+    } catch (error) {
+      // Error handled by slice
+    }
+  };
+
+  const handleVote = async (optionId) => {
+    if (!user) {
+      toast.error("Please login to vote");
+      return;
+    }
+    try {
+      await dispatch(voteInPoll({ eventId: id, optionId }));
+      toast.success("Vote recorded successfully");
+      // Refresh event
+      await dispatch(getEventById(id));
+    } catch (error) {
+      // Error handled by slice
+    }
+  };
 
   return (
     <>
       <Navbar />
-      <Sidebar />
-      <div className="min-h-screen bg-gray-50 md:ml-64">
-        <div className="p-4 md:p-8">
-          {/* Header */}
-          <div className="mb-6">
-            <Link to="/events">
-              <Button variant="outline" className="mb-4 flex items-center gap-2">
-                <ArrowLeft size={18} />
-                Back to Events
-              </Button>
-            </Link>
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-4xl mx-auto p-4 md:p-8">
+          <Link to="/events">
+            <Button variant="outline" className="mb-4">
+              <ArrowLeft size={18} className="mr-2" />
+              Back to Events
+            </Button>
+          </Link>
 
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <h1 className="text-3xl font-bold text-gray-900">
-                    {currentEvent.eventName}
-                  </h1>
-                  {currentEvent.isPinned && (
-                    <span className="text-yellow-500 text-2xl">📌</span>
-                  )}
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <span
-                    className={`inline-block px-3 py-1 text-sm font-medium rounded-full ${getEventTypeBadge(
-                      currentEvent.eventType
-                    )}`}
-                  >
-                    {getEventTypeLabel(currentEvent.eventType)}
+          <Card className="mb-6">
+            {/* Event Header */}
+            <div className="mb-6">
+              <h1 className="text-3xl font-bold text-gray-900 mb-4">{currentEvent.title}</h1>
+
+              {/* Event Meta */}
+              <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 mb-4">
+                <div className="flex items-center gap-2">
+                  <Calendar size={18} />
+                  <span>
+                    {format(new Date(currentEvent.startDate), "MMM dd, yyyy h:mm a")}
+                    {currentEvent.endDate &&
+                      ` - ${format(new Date(currentEvent.endDate), "MMM dd, yyyy h:mm a")}`}
                   </span>
-                  <span
-                    className={`inline-block px-3 py-1 text-sm font-medium rounded ${
-                      currentEvent.status === "upcoming"
-                        ? "bg-green-100 text-green-800"
-                        : currentEvent.status === "ongoing"
-                        ? "bg-blue-100 text-blue-800"
-                        : currentEvent.status === "completed"
-                        ? "bg-gray-100 text-gray-800"
-                        : "bg-red-100 text-red-800"
+                </div>
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={handleLike}
+                    className={`flex items-center gap-2 px-3 py-1 rounded-lg transition-colors ${
+                      hasUserLiked
+                        ? "bg-red-100 text-red-600"
+                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                     }`}
                   >
-                    {currentEvent.status.charAt(0).toUpperCase() +
-                      currentEvent.status.slice(1)}
-                  </span>
+                    <Heart size={18} fill={hasUserLiked ? "currentColor" : "none"} />
+                    <span>{currentEvent.likeCount || 0}</span>
+                  </button>
                 </div>
               </div>
 
-              {(canEdit || canDelete) && (
-                <div className="flex gap-2">
-                  {canEdit && (
-                    <Link to={`/events/${id}/edit`}>
-                      <Button variant="outline" className="flex items-center gap-2">
-                        <Edit size={18} />
-                        Edit
-                      </Button>
-                    </Link>
-                  )}
-                  {canDelete && (
-                    <Button
-                      variant="danger"
-                      className="flex items-center gap-2"
-                      onClick={() => {
-                        if (window.confirm("Are you sure you want to delete this event?")) {
-                          // Handle delete
-                        }
-                      }}
-                    >
-                      <Trash2 size={18} />
-                      Delete
-                    </Button>
-                  )}
-                </div>
+              {/* Description */}
+              {currentEvent.description && (
+                <p className="text-gray-700 whitespace-pre-wrap">{currentEvent.description}</p>
               )}
             </div>
-          </div>
 
-          {/* Tabs */}
-          <div className="flex gap-2 mb-6 border-b border-gray-200">
-            {["details", "media", "polls", "comments"].map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2 text-sm font-medium rounded-t-lg ${
-                  activeTab === tab
-                    ? "bg-blue-500 text-white"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-              >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </button>
-            ))}
-          </div>
+            {/* Media */}
+            {currentEvent.media?.youtubeUrl && (
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold mb-3">Video</h3>
+                <div className="aspect-video">
+                  <iframe
+                    src={currentEvent.media.youtubeUrl.replace(
+                      /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/,
+                      "https://www.youtube.com/embed/$1"
+                    )}
+                    className="w-full h-full rounded-lg"
+                    allowFullScreen
+                  />
+                </div>
+              </div>
+            )}
 
-          {/* Tab Content */}
-          {activeTab === "details" && (
-            <div className="space-y-6">
-              {/* Event Info */}
-              <Card>
-                <div className="space-y-4">
-                  <div className="flex items-start gap-3">
-                    <Calendar className="text-gray-400 mt-1" size={20} />
-                    <div>
-                      <p className="text-sm text-gray-600">Start Date & Time</p>
-                      <p className="font-medium">
-                        {format(new Date(currentEvent.startDate), "MMMM dd, yyyy 'at' h:mm a")}
-                      </p>
-                      {currentEvent.endDate && (
-                        <>
-                          <p className="text-sm text-gray-600 mt-2">End Date & Time</p>
-                          <p className="font-medium">
-                            {format(new Date(currentEvent.endDate), "MMMM dd, yyyy 'at' h:mm a")}
-                          </p>
-                        </>
-                      )}
-                    </div>
-                  </div>
+            {currentEvent.media?.externalLink?.url && (
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold mb-3">External Link</h3>
+                <a
+                  href={currentEvent.media.externalLink.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block p-4 border rounded-lg hover:bg-gray-50"
+                >
+                  {currentEvent.media.externalLink.title && (
+                    <h4 className="font-semibold mb-2">{currentEvent.media.externalLink.title}</h4>
+                  )}
+                  {currentEvent.media.externalLink.description && (
+                    <p className="text-sm text-gray-600 mb-2">
+                      {currentEvent.media.externalLink.description}
+                    </p>
+                  )}
+                  <span className="text-sm text-blue-600">{currentEvent.media.externalLink.url}</span>
+                </a>
+              </div>
+            )}
 
-                  {currentEvent.location?.venueName && (
-                    <div className="flex items-start gap-3">
-                      <MapPin className="text-gray-400 mt-1" size={20} />
-                      <div>
-                        <p className="text-sm text-gray-600">Location</p>
-                        <p className="font-medium">{currentEvent.location.venueName}</p>
-                        {currentEvent.location.address && (
-                          <p className="text-sm text-gray-600">
-                            {currentEvent.location.address}
+            {currentEvent.media?.images?.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold mb-3">Images</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {currentEvent.media.images.map((image, index) => (
+                    <img
+                      key={index}
+                      src={image.url}
+                      alt={image.caption || `Image ${index + 1}`}
+                      className="w-full h-48 object-cover rounded-lg"
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {currentEvent.media?.files?.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold mb-3">Files</h3>
+                <div className="space-y-2">
+                  {currentEvent.media.files.map((file, index) => (
+                    <a
+                      key={index}
+                      href={file.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50"
+                    >
+                      <LinkIcon size={20} className="text-gray-400" />
+                      <div className="flex-1">
+                        <p className="font-medium">{file.name}</p>
+                        {file.size && (
+                          <p className="text-sm text-gray-500">
+                            {(file.size / 1024).toFixed(2)} KB
                           </p>
                         )}
-                        <p className="text-sm text-gray-600">
-                          {currentEvent.location.city}
-                          {currentEvent.location.state && `, ${currentEvent.location.state}`}
-                        </p>
                       </div>
-                    </div>
-                  )}
-
-                  {currentEvent.description && (
-                    <div>
-                      <p className="text-sm text-gray-600 mb-2">Description</p>
-                      <p className="text-gray-900 whitespace-pre-wrap">
-                        {currentEvent.description}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Funeral Details */}
-                  {currentEvent.eventType === "funeral" &&
-                    currentEvent.funeralDetails && (
-                      <div className="bg-gray-50 p-4 rounded-lg">
-                        <h3 className="font-semibold mb-3">Funeral Details</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {currentEvent.funeralDetails.deceasedName && (
-                            <div>
-                              <p className="text-sm text-gray-600">Deceased Name</p>
-                              <p className="font-medium">
-                                {currentEvent.funeralDetails.deceasedName}
-                              </p>
-                            </div>
-                          )}
-                          {currentEvent.funeralDetails.dateOfDeath && (
-                            <div>
-                              <p className="text-sm text-gray-600">Date of Death</p>
-                              <p className="font-medium">
-                                {format(
-                                  new Date(currentEvent.funeralDetails.dateOfDeath),
-                                  "MMMM dd, yyyy"
-                                )}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                  {/* RSVP Section */}
-                  {currentEvent.allowRSVP && (
-                    <div className="border-t pt-4">
-                      <p className="text-sm font-medium text-gray-700 mb-3">RSVP</p>
-                      <div className="flex gap-2">
-                        <Button
-                          variant={rsvpResponse === "attending" ? "primary" : "outline"}
-                          onClick={() => handleRSVP("attending")}
-                          disabled={rsvpResponse === "attending"}
-                        >
-                          Attending ({currentEvent.rsvpCounts?.attending || 0})
-                        </Button>
-                        <Button
-                          variant={rsvpResponse === "not_attending" ? "danger" : "outline"}
-                          onClick={() => handleRSVP("not_attending")}
-                          disabled={rsvpResponse === "not_attending"}
-                        >
-                          Not Attending ({currentEvent.rsvpCounts?.notAttending || 0})
-                        </Button>
-                        <Button
-                          variant={rsvpResponse === "maybe" ? "secondary" : "outline"}
-                          onClick={() => handleRSVP("maybe")}
-                          disabled={rsvpResponse === "maybe"}
-                        >
-                          Maybe ({currentEvent.rsvpCounts?.maybe || 0})
-                        </Button>
-                      </div>
-                    </div>
-                  )}
+                    </a>
+                  ))}
                 </div>
-              </Card>
-            </div>
-          )}
+              </div>
+            )}
 
-          {activeTab === "media" && (
-            <div className="space-y-6">
-              {/* YouTube Links */}
-              {currentEvent.youtubeLinks?.length > 0 && (
-                <Card>
-                  <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                    <Video size={24} />
-                    YouTube Videos
-                  </h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {currentEvent.youtubeLinks.map((link, index) => (
-                      <div key={index} className="border rounded-lg p-4">
-                        <a
-                          href={link.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block"
+            {/* Poll */}
+            {currentEvent.settings?.pollEnabled && currentEvent.poll?.question && (
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold mb-3">Poll</h3>
+                <p className="mb-4">{currentEvent.poll.question}</p>
+                <div className="space-y-3">
+                  {currentEvent.poll.options?.map((option) => {
+                    const totalVotes = currentEvent.poll.options.reduce(
+                      (sum, opt) => sum + (opt.voteCount || 0),
+                      0
+                    );
+                    const percentage =
+                      totalVotes > 0 ? ((option.voteCount || 0) / totalVotes) * 100 : 0;
+                    const isUserVote = userVote?.optionId === option._id.toString();
+
+                    return (
+                      <div key={option._id} className="space-y-2">
+                        <button
+                          onClick={() => handleVote(option._id)}
+                          disabled={!!userVote}
+                          className={`w-full p-3 text-left border-2 rounded-lg transition-colors ${
+                            isUserVote
+                              ? "border-blue-500 bg-blue-50"
+                              : userVote
+                              ? "border-gray-200 bg-gray-50 cursor-not-allowed"
+                              : "border-gray-200 hover:border-blue-300 hover:bg-gray-50"
+                          }`}
                         >
-                          <div className="aspect-video bg-gray-200 rounded mb-2 flex items-center justify-center">
-                            {link.thumbnail ? (
-                              <img
-                                src={link.thumbnail}
-                                alt={link.title || "Video"}
-                                className="w-full h-full object-cover rounded"
-                              />
-                            ) : (
-                              <Video size={48} className="text-gray-400" />
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-medium">{option.text}</span>
+                            <span className="text-sm text-gray-600">
+                              {option.voteCount || 0} votes ({percentage.toFixed(1)}%)
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className="bg-blue-500 h-2 rounded-full transition-all"
+                              style={{ width: `${percentage}%` }}
+                            />
+                          </div>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Comments */}
+            {currentEvent.settings?.commentEnabled && (
+              <div>
+                <h3 className="text-lg font-semibold mb-3">
+                  Comments ({currentEvent.commentCount || 0})
+                </h3>
+
+                {/* Comment Form */}
+                {user && (
+                  <form onSubmit={handleAddComment} className="mb-6">
+                    <div className="flex gap-2">
+                      <Input
+                        value={commentText}
+                        onChange={(e) => setCommentText(e.target.value)}
+                        placeholder="Write a comment..."
+                        className="flex-1"
+                      />
+                      <Button
+                        type="submit"
+                        variant="primary"
+                        disabled={isSubmittingComment}
+                        className="flex items-center gap-2"
+                      >
+                        <Send size={18} />
+                        Post
+                      </Button>
+                    </div>
+                  </form>
+                )}
+
+                {/* Comments List */}
+                <div className="space-y-4">
+                  {currentEvent.comments?.length > 0 ? (
+                    currentEvent.comments.map((comment) => {
+                      const isCommentOwner =
+                        user &&
+                        (comment.userId?._id === user.id ||
+                          comment.userId?._id === user._id ||
+                          comment.userId === user.id ||
+                          comment.userId === user._id);
+                      const canDelete = isAdmin || isCommentOwner;
+
+                      return (
+                        <div key={comment._id} className="p-4 bg-gray-50 rounded-lg">
+                          <div className="flex items-start justify-between mb-2">
+                            <div>
+                              <p className="font-semibold">
+                                {comment.userId?.firstName} {comment.userId?.lastName}
+                              </p>
+                              <p className="text-sm text-gray-500">
+                                {format(new Date(comment.createdAt), "MMM dd, yyyy h:mm a")}
+                              </p>
+                            </div>
+                            {canDelete && (
+                              <button
+                                onClick={() => handleDeleteComment(comment._id)}
+                                className="text-red-600 hover:text-red-800"
+                              >
+                                <Trash2 size={18} />
+                              </button>
                             )}
                           </div>
-                          <h3 className="font-medium">{link.title || "YouTube Video"}</h3>
-                          {link.isLive && (
-                            <span className="inline-block mt-2 px-2 py-1 bg-red-500 text-white text-xs rounded">
-                              LIVE
-                            </span>
-                          )}
-                        </a>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-              )}
-
-              {/* Photos */}
-              {currentEvent.photos?.length > 0 && (
-                <Card>
-                  <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                    <ImageIcon size={24} />
-                    Photos ({currentEvent.photos.length})
-                  </h2>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {currentEvent.photos.map((photo, index) => (
-                      <div key={index} className="aspect-square">
-                        <img
-                          src={photo.url}
-                          alt={photo.caption || `Photo ${index + 1}`}
-                          className="w-full h-full object-cover rounded-lg cursor-pointer hover:opacity-90"
-                          onClick={() => window.open(photo.url, "_blank")}
-                        />
-                        {photo.caption && (
-                          <p className="text-xs text-gray-600 mt-1">{photo.caption}</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-              )}
-            </div>
-          )}
-
-          {activeTab === "polls" && (
-            <div className="space-y-6">
-              {polls.length === 0 ? (
-                <Card>
-                  <div className="text-center py-12">
-                    <p className="text-gray-600">No polls for this event.</p>
-                  </div>
-                </Card>
-              ) : (
-                polls.map((poll) => <PollCard key={poll._id} poll={poll} eventId={id} />)
-              )}
-            </div>
-          )}
-
-          {activeTab === "comments" && (
-            <CommentSection eventId={id} eventType={currentEvent.eventType} />
-          )}
+                          <p className="text-gray-700">{comment.text}</p>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <p className="text-gray-500 text-center py-4">No comments yet. Be the first to comment!</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </Card>
         </div>
       </div>
     </>

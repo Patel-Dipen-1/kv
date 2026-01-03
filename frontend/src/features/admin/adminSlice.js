@@ -462,6 +462,73 @@ export const getFamilyMembersForTransfer = createAsyncThunk(
   }
 );
 
+/**
+ * Get all users and family members
+ * GET /api/users/admin/all-users
+ */
+export const getAllUsersAndFamilyMembers = createAsyncThunk(
+  "admin/getAllUsersAndFamilyMembers",
+  async ({ page = 1, limit = 20, type, status, approvalStatus, search, subFamilyNumber }, { rejectWithValue }) => {
+    try {
+      const { data } = await axiosInstance.get("/users/admin/all-users", {
+        params: { page, limit, type, status, approvalStatus, search, subFamilyNumber },
+      });
+      return {
+        items: data.data,
+        total: data.total,
+        page: data.page,
+        pages: data.pages,
+      };
+    } catch (error) {
+      return rejectWithValue(
+        error.response?.data?.message ||
+        error.response?.data?.errors?.[0]?.message ||
+        "Failed to fetch users and family members"
+      );
+    }
+  }
+);
+
+/**
+ * Update family member (Admin)
+ * PATCH /api/admin/family-members/:id
+ */
+export const adminUpdateFamilyMember = createAsyncThunk(
+  "admin/adminUpdateFamilyMember",
+  async ({ id, updateData }, { rejectWithValue }) => {
+    try {
+      const { data } = await axiosInstance.patch(`/admin/family-members/${id}`, updateData);
+      return data.data;
+    } catch (error) {
+      return rejectWithValue(
+        error.response?.data?.message ||
+        error.response?.data?.errors?.[0]?.message ||
+        "Failed to update family member"
+      );
+    }
+  }
+);
+
+/**
+ * Delete family member (Admin)
+ * DELETE /api/admin/family-members/:id
+ */
+export const adminDeleteFamilyMember = createAsyncThunk(
+  "admin/adminDeleteFamilyMember",
+  async (id, { rejectWithValue }) => {
+    try {
+      await axiosInstance.delete(`/admin/family-members/${id}`);
+      return id;
+    } catch (error) {
+      return rejectWithValue(
+        error.response?.data?.message ||
+        error.response?.data?.errors?.[0]?.message ||
+        "Failed to delete family member"
+      );
+    }
+  }
+);
+
 const adminSlice = createSlice({
   name: "admin",
   initialState: {
@@ -469,10 +536,11 @@ const adminSlice = createSlice({
     approvedUsers: [],
     rejectedUsers: [],
     familyMembers: [],
+    allUsersAndFamilyMembers: [],
     stats: { pending: 0, approved: 0, rejected: 0 },
-    currentPage: { pending: 1, approved: 1, rejected: 1, activityLogs: 1 },
-    totalPages: { pending: 1, approved: 1, rejected: 1, activityLogs: 1 },
-    total: { pending: 0, approved: 0, rejected: 0, activityLogs: 0 },
+    currentPage: { pending: 1, approved: 1, rejected: 1, activityLogs: 1, allUsers: 1 },
+    totalPages: { pending: 1, approved: 1, rejected: 1, activityLogs: 1, allUsers: 1 },
+    total: { pending: 0, approved: 0, rejected: 0, activityLogs: 0, allUsers: 0 },
     isLoading: false,
     error: null,
     selectedUser: null,
@@ -863,6 +931,64 @@ const adminSlice = createSlice({
         state.error = null;
       })
       .addCase(getFamilyMembersForTransfer.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload;
+      });
+
+    // Get All Users And Family Members
+    builder
+      .addCase(getAllUsersAndFamilyMembers.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(getAllUsersAndFamilyMembers.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.allUsersAndFamilyMembers = action.payload.items;
+        state.currentPage.allUsers = action.payload.page;
+        state.totalPages.allUsers = action.payload.pages;
+        state.total.allUsers = action.payload.total;
+        state.error = null;
+      })
+      .addCase(getAllUsersAndFamilyMembers.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload;
+      });
+
+    // Admin Update Family Member
+    builder
+      .addCase(adminUpdateFamilyMember.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(adminUpdateFamilyMember.fulfilled, (state, action) => {
+        state.isLoading = false;
+        // Update in allUsersAndFamilyMembers list
+        state.allUsersAndFamilyMembers = state.allUsersAndFamilyMembers.map((item) =>
+          item._id === action.payload._id ? action.payload : item
+        );
+        state.error = null;
+      })
+      .addCase(adminUpdateFamilyMember.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload;
+      });
+
+    // Admin Delete Family Member
+    builder
+      .addCase(adminDeleteFamilyMember.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(adminDeleteFamilyMember.fulfilled, (state, action) => {
+        state.isLoading = false;
+        // Remove from allUsersAndFamilyMembers list
+        state.allUsersAndFamilyMembers = state.allUsersAndFamilyMembers.filter(
+          (item) => item._id !== action.payload
+        );
+        state.total.allUsers = Math.max(0, state.total.allUsers - 1);
+        state.error = null;
+      })
+      .addCase(adminDeleteFamilyMember.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload;
       });

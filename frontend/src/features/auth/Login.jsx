@@ -3,19 +3,22 @@ import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate, Link } from "react-router-dom";
-import { login, clearError } from "./authSlice";
+import { login, clearError, clearMessage } from "./authSlice";
 import { USER_ROLES } from "../../constants/enums";
 import { loginSchema } from "../../utils/validation";
+import { normalizePhone } from "../../utils/phoneUtils";
+import { MESSAGES } from "../../constants/authMessages";
 import Input from "../../components/common/Input";
 import Button from "../../components/common/Button";
 import ErrorAlert from "../../components/common/ErrorAlert";
 import Card from "../../components/common/Card";
 import { Eye, EyeOff } from "lucide-react";
+import { toast } from "react-toastify";
 
 const Login = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { isLoading, error, isAuthenticated, user } = useSelector(
+  const { isLoading, error, message, isAuthenticated, user } = useSelector(
     (state) => state.auth
   );
   const [showPassword, setShowPassword] = useState(false);
@@ -30,6 +33,12 @@ const Login = () => {
 
   useEffect(() => {
     if (isAuthenticated && user) {
+      // Check if user needs to complete profile
+      if (user.registrationStep === 1 && !user.profileCompleted) {
+        navigate("/complete-profile");
+        return;
+      }
+      
       // Check if user is using default password (mobile number)
       // Backend should return needsPasswordChange flag
       if (user.needsPasswordChange) {
@@ -48,6 +57,22 @@ const Login = () => {
     }
   }, [isAuthenticated, user, navigate]);
 
+  // Handle login success message
+  useEffect(() => {
+    if (message && isAuthenticated) {
+      toast.success(message || MESSAGES.AUTH.LOGIN_SUCCESS);
+      dispatch(clearMessage());
+    }
+  }, [message, isAuthenticated, dispatch]);
+
+  // Handle login error
+  useEffect(() => {
+    if (error) {
+      toast.error(error);
+      dispatch(clearError());
+    }
+  }, [error, dispatch]);
+
   useEffect(() => {
     return () => {
       dispatch(clearError());
@@ -55,7 +80,20 @@ const Login = () => {
   }, [dispatch]);
 
   const onSubmit = (data) => {
-    dispatch(login(data));
+    let { emailOrMobile } = data;
+    
+    // Normalize phone number if it's not an email
+    if (emailOrMobile && !String(emailOrMobile).includes("@")) {
+      const normalized = normalizePhone(emailOrMobile);
+      if (normalized) {
+        emailOrMobile = normalized;
+      } else {
+        toast.error(MESSAGES.REGISTER.PHONE_INVALID);
+        return;
+      }
+    }
+    
+    dispatch(login({ emailOrMobile, password: data.password }));
   };
 
   return (
@@ -66,13 +104,6 @@ const Login = () => {
             Login to Family Community
           </h1>
 
-          {error && (
-            <ErrorAlert
-              message={error}
-              onDismiss={() => dispatch(clearError())}
-              className="mb-4"
-            />
-          )}
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <Input

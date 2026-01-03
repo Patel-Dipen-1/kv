@@ -60,15 +60,21 @@ app.use("/api/comments", commentRoutes);
 app.use("/api/user-relationships", userRelationshipRoutes);
 app.use("/api/family-member-requests", familyMemberRequestRoutes);
 
-app.use(express.static(path.join(__dirname, "../frontend/build")));
-
-app.use((req, res, next) => {
-  // Skip API routes or static files that have already been handled
-  res.sendFile(path.resolve(__dirname, "../frontend/build/index.html"));
-});
-
 app.use("/uploads", express.static("uploads"));
 
+// Serve static files from React app
+app.use(express.static(path.join(__dirname, "../frontend/build")));
+
+// Catch-all handler: serve React app for any non-API routes
+// app.get("*", (req, res, next) => {
+//   // Skip API routes - if it's an API route, pass to error handler if needed
+//   if (req.path.startsWith("/api/")) {
+//     return next();
+//   }
+//   res.sendFile(path.resolve(__dirname, "../frontend/build/index.html"));
+// });
+
+// Error middleware MUST be last - Express will call it when next(error) is called
 app.use(errorMiddleware);
 
 module.exports = app;
