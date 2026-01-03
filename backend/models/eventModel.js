@@ -15,7 +15,7 @@ const eventSchema = new mongoose.Schema(
     },
     eventType: {
       type: String,
-      enum: ["normal", "invitation", "announcement", "link", "youtube"],
+      enum: ["normal", "invitation", "announcement", "link", "youtube", "instagram"],
       default: "normal",
     },
     startDate: {
@@ -43,6 +43,14 @@ const eventSchema = new mongoose.Schema(
         },
       ],
       youtubeUrl: {
+        type: String,
+        trim: true,
+      },
+      whatsappNumber: {
+        type: String,
+        trim: true,
+      },
+      whatsappMessage: {
         type: String,
         trim: true,
       },

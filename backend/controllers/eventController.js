@@ -40,8 +40,11 @@ exports.createEvent = catchAsyncErrors(async (req, res, next) => {
     createdBy: user.id || user._id,
     media: media || {
       images: [],
+      videos: [],
       files: [],
       youtubeUrl: "",
+      whatsappNumber: "",
+      whatsappMessage: "",
       externalLink: {},
     },
     settings: {
@@ -277,7 +280,10 @@ exports.updateEvent = catchAsyncErrors(async (req, res, next) => {
   if (media) {
     if (media.images) event.media.images = media.images;
     if (media.files) event.media.files = media.files;
+    if (media.videos) event.media.videos = media.videos;
     if (media.youtubeUrl !== undefined) event.media.youtubeUrl = media.youtubeUrl;
+    if (media.whatsappNumber !== undefined) event.media.whatsappNumber = media.whatsappNumber;
+    if (media.whatsappMessage !== undefined) event.media.whatsappMessage = media.whatsappMessage;
     if (media.externalLink) event.media.externalLink = media.externalLink;
   }
 

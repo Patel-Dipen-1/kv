@@ -50,7 +50,7 @@ const Navbar = () => {
       path: "/family-connections", 
       label: "Family Connections", 
       icon: Network, 
-      show: isAuthenticated 
+      show: isAuthenticated && hasAdminPermissions // Only show for admin users
     },
     { 
       path: `/family-members${user?.subFamilyNumber ? `/${user.subFamilyNumber}` : ""}`, 

@@ -33,7 +33,12 @@ export const getEventById = createAsyncThunk(
   "events/getEventById",
   async (eventId, { rejectWithValue }) => {
     try {
-      const { data } = await axiosInstance.get(`/events/${eventId}`);
+      // Ensure eventId is a string
+      const id = typeof eventId === 'string' ? eventId : String(eventId?._id || eventId?.id || eventId);
+      if (!id) {
+        return rejectWithValue("Event ID is required");
+      }
+      const { data } = await axiosInstance.get(`/events/${id}`);
       return data.data;
     } catch (error) {
       return rejectWithValue(
@@ -69,7 +74,12 @@ export const updateEvent = createAsyncThunk(
   "events/updateEvent",
   async ({ eventId, eventData }, { rejectWithValue }) => {
     try {
-      const { data } = await axiosInstance.put(`/events/${eventId}`, eventData);
+      // Ensure eventId is a string
+      const id = typeof eventId === 'string' ? eventId : String(eventId?._id || eventId?.id || eventId);
+      if (!id) {
+        return rejectWithValue("Event ID is required");
+      }
+      const { data } = await axiosInstance.put(`/events/${id}`, eventData);
       return data.data;
     } catch (error) {
       return rejectWithValue(
@@ -87,8 +97,13 @@ export const deleteEvent = createAsyncThunk(
   "events/deleteEvent",
   async (eventId, { rejectWithValue }) => {
     try {
-      await axiosInstance.delete(`/events/${eventId}`);
-      return eventId;
+      // Ensure eventId is a string
+      const id = typeof eventId === 'string' ? eventId : String(eventId?._id || eventId?.id || eventId);
+      if (!id) {
+        return rejectWithValue("Event ID is required");
+      }
+      await axiosInstance.delete(`/events/${id}`);
+      return id;
     } catch (error) {
       return rejectWithValue(
         error.response?.data?.message || "Failed to delete event"
@@ -105,8 +120,13 @@ export const toggleLike = createAsyncThunk(
   "events/toggleLike",
   async (eventId, { rejectWithValue }) => {
     try {
-      const { data } = await axiosInstance.post(`/events/${eventId}/like`);
-      return { eventId, ...data.data };
+      // Ensure eventId is a string
+      const id = typeof eventId === 'string' ? eventId : String(eventId?._id || eventId?.id || eventId);
+      if (!id) {
+        return rejectWithValue("Event ID is required");
+      }
+      const { data } = await axiosInstance.post(`/events/${id}/like`);
+      return { eventId: id, ...data.data };
     } catch (error) {
       return rejectWithValue(
         error.response?.data?.message || "Failed to toggle like"
@@ -123,8 +143,13 @@ export const addComment = createAsyncThunk(
   "events/addComment",
   async ({ eventId, text }, { rejectWithValue }) => {
     try {
-      const { data } = await axiosInstance.post(`/events/${eventId}/comment`, { text });
-      return { eventId, comment: data.data };
+      // Ensure eventId is a string
+      const id = typeof eventId === 'string' ? eventId : String(eventId?._id || eventId?.id || eventId);
+      if (!id) {
+        return rejectWithValue("Event ID is required");
+      }
+      const { data } = await axiosInstance.post(`/events/${id}/comment`, { text });
+      return { eventId: id, comment: data.data };
     } catch (error) {
       return rejectWithValue(
         error.response?.data?.message || "Failed to add comment"
@@ -141,8 +166,14 @@ export const deleteComment = createAsyncThunk(
   "events/deleteComment",
   async ({ eventId, commentId }, { rejectWithValue }) => {
     try {
-      await axiosInstance.delete(`/events/${eventId}/comment/${commentId}`);
-      return { eventId, commentId };
+      // Ensure eventId and commentId are strings
+      const id = typeof eventId === 'string' ? eventId : String(eventId?._id || eventId?.id || eventId);
+      const cId = typeof commentId === 'string' ? commentId : String(commentId?._id || commentId?.id || commentId);
+      if (!id || !cId) {
+        return rejectWithValue("Event ID and Comment ID are required");
+      }
+      await axiosInstance.delete(`/events/${id}/comment/${cId}`);
+      return { eventId: id, commentId: cId };
     } catch (error) {
       return rejectWithValue(
         error.response?.data?.message || "Failed to delete comment"
@@ -159,8 +190,14 @@ export const voteInPoll = createAsyncThunk(
   "events/voteInPoll",
   async ({ eventId, optionId }, { rejectWithValue }) => {
     try {
-      const { data } = await axiosInstance.post(`/events/${eventId}/vote`, { optionId });
-      return { eventId, ...data.data };
+      // Ensure eventId and optionId are strings
+      const id = typeof eventId === 'string' ? eventId : String(eventId?._id || eventId?.id || eventId);
+      const optId = typeof optionId === 'string' ? optionId : String(optionId?._id || optionId?.id || optionId);
+      if (!id || !optId) {
+        return rejectWithValue("Event ID and Option ID are required");
+      }
+      const { data } = await axiosInstance.post(`/events/${id}/vote`, { optionId: optId });
+      return { eventId: id, ...data.data };
     } catch (error) {
       return rejectWithValue(
         error.response?.data?.message || "Failed to vote"
@@ -202,10 +239,19 @@ const eventSlice = createSlice({
       })
       .addCase(getAllEvents.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.events = action.payload.data || [];
+        const newPage = action.payload.page || 1;
+        // If loading page 1, replace events. Otherwise, append for infinite scroll
+        if (newPage === 1) {
+          state.events = action.payload.data || [];
+        } else {
+          // Append new events, avoiding duplicates
+          const existingIds = new Set(state.events.map(e => e._id));
+          const newEvents = (action.payload.data || []).filter(e => !existingIds.has(e._id));
+          state.events = [...state.events, ...newEvents];
+        }
         state.pagination = {
-          page: action.payload.page || 1,
-          limit: action.payload.pages ? action.payload.total / action.payload.pages : 20,
+          page: newPage,
+          limit: action.payload.limit || 20,
           total: action.payload.total || 0,
           pages: action.payload.pages || 0,
         };

@@ -1,6 +1,31 @@
 const mongoose = require("mongoose");
+const path = require("path");
 const Location = require("../models/locationModel");
-require("dotenv").config({ path: "backend/config/config.env" });
+
+// Load environment variables - try multiple paths
+const envPaths = [
+  path.join(__dirname, "../config/config.env"), // From backend/scripts/
+  path.join(__dirname, "../../backend/config/config.env"), // From root/
+  "backend/config/config.env", // Relative from root
+];
+
+let envLoaded = false;
+for (const envPath of envPaths) {
+  try {
+    require("dotenv").config({ path: envPath });
+    if (process.env.DB_URI) {
+      envLoaded = true;
+      break;
+    }
+  } catch (e) {
+    // Try next path
+  }
+}
+
+if (!envLoaded) {
+  // Try default dotenv
+  require("dotenv").config();
+}
 
 /**
  * Seed script for initial location data
@@ -183,7 +208,13 @@ const locations = [
 const seedLocations = async () => {
   try {
     // Connect to database
-    await mongoose.connect(process.env.MONGODB_URI || process.env.DATABASE_URL);
+    const dbUri = process.env.DB_URI || process.env.MONGODB_URI || process.env.DATABASE_URL;
+    if (!dbUri) {
+      console.error("Error: Database URI not found in environment variables");
+      console.error("Please set DB_URI in backend/config/config.env");
+      process.exit(1);
+    }
+    await mongoose.connect(dbUri);
     console.log("Connected to MongoDB");
 
     // Clear existing locations (optional - comment out if you want to keep existing)

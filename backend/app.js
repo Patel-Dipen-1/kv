@@ -44,6 +44,7 @@ const pollRoutes = require("./routes/pollRoutes");
 const commentRoutes = require("./routes/commentRoutes");
 const userRelationshipRoutes = require("./routes/userRelationshipRoutes");
 const familyMemberRequestRoutes = require("./routes/familyMemberRequestRoutes");
+const locationRoutes = require("./routes/locationRoutes");
 
 // Mount routes
 app.use("/api/auth", authRoutes);
@@ -59,6 +60,7 @@ app.use("/api/polls", pollRoutes);
 app.use("/api/comments", commentRoutes);
 app.use("/api/user-relationships", userRelationshipRoutes);
 app.use("/api/family-member-requests", familyMemberRequestRoutes);
+app.use("/api/locations", locationRoutes);
 
 app.use("/uploads", express.static("uploads"));
 

@@ -76,8 +76,86 @@ exports.register = catchAsyncErrors(async (req, res, next) => {
     );
   }
 
-  // If password not provided, use mobile number as default password
-  const userPassword = password || cleanedMobile;
+  // Password is now required - validate it
+  if (!password) {
+    return next(new ErrorHandler("Password is required", 400));
+  }
+  
+  if (password.length < 8) {
+    return next(new ErrorHandler("Password must be at least 8 characters", 400));
+  }
+
+  // Validate location using library service
+  const locationService = require("../services/locationService");
+  const Location = require("../models/locationModel");
+  
+  if (address && address.city) {
+    const cityName = address.city.trim();
+    const stateName = address.state?.trim() || null;
+    const countryCode = address.country?.toLowerCase() === "india" ? "IN" : "IN"; // Default to India
+    
+    // Validate city exists in library
+    const cityData = locationService.getCityByName(cityName, stateName, countryCode);
+    
+    if (!cityData) {
+      return next(
+        new ErrorHandler(
+          `City "${cityName}" not found. Please enter a valid city name.`,
+          400
+        )
+      );
+    }
+    
+    // Validate state matches city
+    if (stateName && cityData.state.toLowerCase() !== stateName.toLowerCase()) {
+      return next(
+        new ErrorHandler(
+          `State "${stateName}" does not match city "${cityName}". Expected state: "${cityData.state}".`,
+          400
+        )
+      );
+    }
+    
+    // Validate country matches
+    if (address.country && cityData.country.toLowerCase() !== address.country.toLowerCase()) {
+      return next(
+        new ErrorHandler(
+          `Country "${address.country}" does not match city "${cityName}". Expected country: "${cityData.country}".`,
+          400
+        )
+      );
+    }
+    
+    // Validate pincode if provided
+    if (address.pincode) {
+      // Try to get pincode from database
+      const pincodeData = await locationService.getPincodeForCity(cityName, cityData.state, countryCode);
+      
+      if (pincodeData.pincodes.length > 0) {
+        // Validate pincode is in the list
+        if (!pincodeData.pincodes.includes(address.pincode)) {
+          return next(
+            new ErrorHandler(
+              `Pincode "${address.pincode}" is not valid for city "${cityName}". Valid pincodes: ${pincodeData.pincodes.join(", ")}`,
+              400
+            )
+          );
+        }
+      } else {
+        // If no pincode in database, validate format only
+        if (!/^\d{6}$/.test(address.pincode)) {
+          return next(
+            new ErrorHandler(
+              `Pincode must be a 6-digit number.`,
+              400
+            )
+          );
+        }
+      }
+    }
+  }
+
+  const userPassword = password;
 
   // Find default "User" role to assign to new registrations
   const Role = require("../models/roleModel");
@@ -118,7 +196,7 @@ exports.register = catchAsyncErrors(async (req, res, next) => {
 
   res.status(201).json({
     success: true,
-    message: "User registered successfully. Waiting for admin approval.",
+    message: "Registration successful! Please login.",
     user: userData,
     token,
   });
