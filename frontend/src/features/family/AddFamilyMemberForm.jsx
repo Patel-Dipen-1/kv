@@ -454,7 +454,7 @@ const AddFamilyMemberForm = ({ onClose, onSuccess, isRequestMode = false }) => {
               </div>
             )}
           </div>
-          )}
+        
           
           {/* Info message for family member accounts (request mode) */}
           {isRequestMode && (
