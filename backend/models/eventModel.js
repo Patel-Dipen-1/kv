@@ -2,40 +2,21 @@ const mongoose = require("mongoose");
 
 const eventSchema = new mongoose.Schema(
   {
-    eventName: {
+    title: {
       type: String,
-      required: [true, "Event name is required"],
+      required: [true, "Event title is required"],
       trim: true,
-      maxLength: [200, "Event name cannot exceed 200 characters"],
-    },
-    eventType: {
-      type: String,
-      required: [true, "Event type is required"],
-      enum: {
-        values: [
-          "funeral",
-          "condolence",
-          "festival",
-          "marriage",
-          "engagement",
-          "reception",
-          "birthday",
-          "anniversary",
-          "housewarming",
-          "community_function",
-          "religious",
-          "spiritual",
-          "informational",
-          "youtube_live",
-          "other",
-        ],
-        message: "Invalid event type",
-      },
+      maxlength: [200, "Title cannot exceed 200 characters"],
     },
     description: {
       type: String,
-      maxLength: [2000, "Description cannot exceed 2000 characters"],
       trim: true,
+      maxlength: [5000, "Description cannot exceed 5000 characters"],
+    },
+    eventType: {
+      type: String,
+      enum: ["normal", "invitation", "announcement", "link", "youtube"],
+      default: "normal",
     },
     startDate: {
       type: Date,
@@ -44,244 +25,134 @@ const eventSchema = new mongoose.Schema(
     endDate: {
       type: Date,
     },
-    location: {
-      venueName: {
+    // Media
+    media: {
+      images: [
+        {
+          url: String,
+          caption: String,
+          uploadedAt: { type: Date, default: Date.now },
+        },
+      ],
+      files: [
+        {
+          url: String,
+          name: String,
+          size: Number,
+          uploadedAt: { type: Date, default: Date.now },
+        },
+      ],
+      youtubeUrl: {
         type: String,
         trim: true,
       },
-      address: {
-        type: String,
-        trim: true,
-      },
-      city: {
-        type: String,
-        trim: true,
-      },
-      state: {
-        type: String,
-        trim: true,
-      },
-      country: {
-        type: String,
-        default: "India",
-        trim: true,
+      externalLink: {
+        url: String,
+        title: String,
+        description: String,
+        image: String,
       },
     },
-    // Media attachments
-    youtubeLinks: [
-      {
-        url: {
-          type: String,
-          required: true,
-        },
-        title: {
-          type: String,
-          trim: true,
-        },
-        description: {
-          type: String,
-          trim: true,
-        },
-        isLive: {
-          type: Boolean,
-          default: false,
-        },
-        thumbnail: {
-          type: String,
-        },
-        addedAt: {
-          type: Date,
-          default: Date.now,
-        },
+    // Settings
+    settings: {
+      commentEnabled: {
+        type: Boolean,
+        default: true,
       },
-    ],
-    photos: [
+      pollEnabled: {
+        type: Boolean,
+        default: false,
+      },
+      visibility: {
+        type: String,
+        enum: ["public", "private"],
+        default: "public",
+      },
+    },
+    // Poll
+    poll: {
+      question: {
+        type: String,
+        trim: true,
+        maxlength: [500, "Poll question cannot exceed 500 characters"],
+      },
+      options: [
+        {
+          text: {
+            type: String,
+            required: true,
+            trim: true,
+          },
+          votes: [
+            {
+              userId: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: "User",
+              },
+              votedAt: {
+                type: Date,
+                default: Date.now,
+              },
+            },
+          ],
+          voteCount: {
+            type: Number,
+            default: 0,
+          },
+        },
+      ],
+    },
+    // Likes - one per user
+    likes: [
       {
-        url: {
-          type: String,
-          required: true,
-        },
-        caption: {
-          type: String,
-          trim: true,
-        },
-        uploadedAt: {
-          type: Date,
-          default: Date.now,
-        },
-        uploadedBy: {
+        userId: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "User",
         },
-      },
-    ],
-    videos: [
-      {
-        url: {
-          type: String,
-          required: true,
-        },
-        caption: {
-          type: String,
-          trim: true,
-        },
-        thumbnail: {
-          type: String,
-        },
-        uploadedAt: {
+        likedAt: {
           type: Date,
           default: Date.now,
         },
-        uploadedBy: {
+      },
+    ],
+    likeCount: {
+      type: Number,
+      default: 0,
+    },
+    // Comments
+    comments: [
+      {
+        userId: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "User",
+          required: true,
+        },
+        text: {
+          type: String,
+          required: [true, "Comment text is required"],
+          trim: true,
+          maxlength: [1000, "Comment cannot exceed 1000 characters"],
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+        updatedAt: {
+          type: Date,
         },
       },
     ],
-    // Visibility and access
-    visibility: {
-      type: String,
-      enum: {
-        values: ["public", "samaj", "family", "role"],
-        message: "Invalid visibility setting",
-      },
-      default: "public",
+    commentCount: {
+      type: Number,
+      default: 0,
     },
-    visibleToSamaj: [
-      {
-        type: String, // Samaj type values
-      },
-    ],
-    visibleToRoles: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Role",
-      },
-    ],
-    visibleToFamilies: [
-      {
-        type: String, // subFamilyNumber
-      },
-    ],
-    // Status
-    status: {
-      type: String,
-      enum: {
-        values: ["upcoming", "ongoing", "completed", "cancelled"],
-        message: "Invalid status",
-      },
-      default: "upcoming",
-    },
-    // Special flags
-    isPinned: {
-      type: Boolean,
-      default: false,
-    },
-    isImportant: {
-      type: Boolean,
-      default: false,
-    },
-    allowRSVP: {
-      type: Boolean,
-      default: false,
-    },
-    allowComments: {
-      type: Boolean,
-      default: true,
-    },
-    // Funeral/Condolence specific fields
-    funeralDetails: {
-      deceasedName: {
-        type: String,
-        trim: true,
-      },
-      deceasedAge: {
-        type: Number,
-      },
-      relation: {
-        type: String,
-        trim: true,
-      },
-      dateOfDeath: {
-        type: Date,
-      },
-      prayerMeetDetails: {
-        type: String,
-        trim: true,
-      },
-      familyContactPerson: {
-        type: String,
-        trim: true,
-      },
-      familyContactNumber: {
-        type: String,
-        trim: true,
-      },
-    },
-    // Related person (for marriage, birthday, etc.)
-    relatedPerson: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-    },
-    relatedPersonName: {
-      type: String,
-      trim: true,
-    },
-    // Recurring events
-    isRecurring: {
-      type: Boolean,
-      default: false,
-    },
-    recurrencePattern: {
-      type: String,
-      enum: ["yearly", "monthly", "weekly"],
-    },
-    // Creator and metadata
+    // Creator
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
-    approvedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-    },
-    approvalStatus: {
-      type: String,
-      enum: ["pending", "approved", "rejected"],
-      default: "approved", // Auto-approved for admins, pending for regular users
-    },
-    approvedAt: {
-      type: Date,
-    },
-    // RSVP counts
-    rsvpCounts: {
-      attending: {
-        type: Number,
-        default: 0,
-      },
-      notAttending: {
-        type: Number,
-        default: 0,
-      },
-      maybe: {
-        type: Number,
-        default: 0,
-      },
-    },
-    // Statistics
-    viewCount: {
-      type: Number,
-      default: 0,
-    },
-    commentCount: {
-      type: Number,
-      default: 0,
-    },
-    pollCount: {
-      type: Number,
-      default: 0,
-    },
+    // Status
     isActive: {
       type: Boolean,
       default: true,
@@ -292,102 +163,114 @@ const eventSchema = new mongoose.Schema(
   }
 );
 
-// Indexes for performance
-eventSchema.index({ startDate: 1 });
-eventSchema.index({ eventType: 1 });
-eventSchema.index({ status: 1 });
+// Indexes
 eventSchema.index({ createdBy: 1 });
-eventSchema.index({ isPinned: -1, startDate: 1 }); // For sorting pinned events first
-eventSchema.index({ visibility: 1, visibleToSamaj: 1 });
-eventSchema.index({ "location.city": 1 });
+eventSchema.index({ startDate: 1 });
+eventSchema.index({ "settings.visibility": 1 });
+eventSchema.index({ isActive: 1 });
 
-// Virtual for checking if event is live (YouTube Live)
-eventSchema.virtual("isLive").get(function () {
-  const now = new Date();
-  return (
-    this.status === "ongoing" &&
-    this.youtubeLinks.some((link) => link.isLive === true) &&
-    this.startDate <= now &&
-    (!this.endDate || this.endDate >= now)
+// Methods
+eventSchema.methods.hasUserLiked = function (userId) {
+  if (!userId) return false;
+  return this.likes.some(
+    (like) => like.userId.toString() === userId.toString()
   );
-});
+};
 
-// Method to check if user can view event
-eventSchema.methods.canUserView = function (user) {
-  // Clean visibility value (remove trailing commas/whitespace)
-  const cleanVisibility = this.visibility ? this.visibility.toString().trim().replace(/,$/, '') : null;
-  
-  // If visibility is not set or is invalid, default to public (visible to all)
-  if (!cleanVisibility || !["public", "samaj", "family", "role"].includes(cleanVisibility)) {
-    return true; // Default to public if invalid
+eventSchema.methods.hasUserVoted = function (userId) {
+  if (!userId || !this.settings.pollEnabled) return false;
+  return this.poll.options.some((option) =>
+    option.votes.some((vote) => vote.userId.toString() === userId.toString())
+  );
+};
+
+eventSchema.methods.getUserVote = function (userId) {
+  if (!userId) return null;
+  for (const option of this.poll.options) {
+    const vote = option.votes.find(
+      (v) => v.userId.toString() === userId.toString()
+    );
+    if (vote) {
+      return {
+        optionId: option._id.toString(),
+        optionText: option.text,
+      };
+    }
+  }
+  return null;
+};
+
+eventSchema.methods.addLike = function (userId) {
+  if (this.hasUserLiked(userId)) {
+    // Remove like
+    this.likes = this.likes.filter(
+      (like) => like.userId.toString() !== userId.toString()
+    );
+    this.likeCount = Math.max(0, this.likeCount - 1);
+    return false; // Unliked
+  } else {
+    // Add like
+    this.likes.push({ userId });
+    this.likeCount += 1;
+    return true; // Liked
+  }
+};
+
+eventSchema.methods.addComment = function (userId, text) {
+  this.comments.push({
+    userId,
+    text,
+    createdAt: Date.now(),
+  });
+  this.commentCount += 1;
+  return this.comments[this.comments.length - 1];
+};
+
+eventSchema.methods.deleteComment = function (commentId, userId, isAdmin) {
+  const comment = this.comments.id(commentId);
+  if (!comment) {
+    throw new Error("Comment not found");
   }
   
-  // Public events are always visible
-  if (cleanVisibility === "public") return true;
-  
-  // If no user, only public events are visible
-  if (!user) return false;
-
-  // Samaj-based visibility
-  if (cleanVisibility === "samaj") {
-    // If no samaj restrictions, visible to all authenticated users
-    if (!this.visibleToSamaj || this.visibleToSamaj.length === 0) return true;
-    // Check if user's samaj is in the list
-    return user.samaj && this.visibleToSamaj.includes(user.samaj);
+  // Check permission
+  if (!isAdmin && comment.userId.toString() !== userId.toString()) {
+    throw new Error("You don't have permission to delete this comment");
   }
 
-  // Family-based visibility
-  if (cleanVisibility === "family") {
-    // If no family restrictions, visible to all authenticated users
-    if (!this.visibleToFamilies || this.visibleToFamilies.length === 0) return true;
-    // Check if user's subFamilyNumber is in the list
-    return user.subFamilyNumber && this.visibleToFamilies.includes(user.subFamilyNumber);
-  }
-
-  // Role-based visibility
-  if (cleanVisibility === "role") {
-    // If no role restrictions, visible to all authenticated users
-    if (!this.visibleToRoles || this.visibleToRoles.length === 0) return true;
-    // Check if user has roleRef populated
-    if (!user.roleRef) return false;
-    // Get role ID (handle both populated object and ID string)
-    const userRoleId = user.roleRef._id ? user.roleRef._id.toString() : user.roleRef.toString();
-    // Check if user's role is in the list
-    return this.visibleToRoles.some((roleId) => {
-      const roleIdStr = roleId._id ? roleId._id.toString() : roleId.toString();
-      return roleIdStr === userRoleId;
-    });
-  }
-
-  // Default: allow access if visibility type is unknown (fail open for safety)
+  this.comments.pull(commentId);
+  this.commentCount = Math.max(0, this.commentCount - 1);
   return true;
 };
 
-// Pre-save hook to update status based on dates
-eventSchema.pre("save", function (next) {
-  try {
-    const now = new Date();
-    
-    if (this.status !== "cancelled") {
-      if (this.startDate > now) {
-        this.status = "upcoming";
-      } else if (this.endDate && this.endDate < now) {
-        this.status = "completed";
-      } else if (this.startDate <= now && (!this.endDate || this.endDate >= now)) {
-        this.status = "ongoing";
-      }
-    }
-    
-    if (typeof next === "function") {
-      next();
-    }
-  } catch (error) {
-    if (typeof next === "function") {
-      next(error);
-    } else {
-      throw error;
-    }
+eventSchema.methods.voteInPoll = function (userId, optionId) {
+  if (!this.settings.pollEnabled) {
+    throw new Error("Poll is not enabled for this event");
   }
+
+  // Remove existing vote
+  this.poll.options.forEach((option) => {
+    option.votes = option.votes.filter(
+      (vote) => vote.userId.toString() !== userId.toString()
+    );
+    option.voteCount = option.votes.length;
+  });
+
+  // Add new vote
+  const option = this.poll.options.id(optionId);
+  if (!option) {
+    throw new Error("Poll option not found");
+  }
+
+  option.votes.push({ userId });
+  option.voteCount = option.votes.length;
+  return option;
+};
+
+// Pre-save hook to update likeCount and commentCount
+eventSchema.pre("save", function () {
+  // In Mongoose, pre-save hooks can be synchronous (no next parameter needed)
+  this.likeCount = this.likes && Array.isArray(this.likes) ? this.likes.length : 0;
+  this.commentCount = this.comments && Array.isArray(this.comments) ? this.comments.length : 0;
 });
 
 module.exports = mongoose.model("Event", eventSchema);

@@ -1,6 +1,7 @@
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const ErrorHandler = require("../utils/errorhander");
 const User = require("../models/userModel");
+const FamilyMember = require("../models/familyMemberModel");
 const { logActivity } = require("../utils/activityLogger");
 
 /**
@@ -586,7 +587,7 @@ exports.hardDeleteUser = catchAsyncErrors(async (req, res, next) => {
 
   // Check dependencies
   const FamilyMember = require("../models/familyMemberModel");
-  const Event = require("../models/eventModel");
+  // Event functionality removed
   const Comment = require("../models/commentModel");
   const UserRelationship = require("../models/userRelationshipModel");
 
@@ -601,7 +602,7 @@ exports.hardDeleteUser = catchAsyncErrors(async (req, res, next) => {
     deletedAt: null,
   });
 
-  const eventsCount = await Event.countDocuments({ createdBy: id });
+  const eventsCount = 0; // Event functionality removed
   const commentsCount = await Comment.countDocuments({ userId: id });
   const relationshipsCount = await UserRelationship.countDocuments({
     $or: [{ user1Id: id }, { user2Id: id }],
@@ -668,7 +669,7 @@ exports.hardDeleteUser = catchAsyncErrors(async (req, res, next) => {
     }
     
     // Set events createdBy to null or delete
-    await Event.updateMany({ createdBy: id }, { createdBy: null });
+    // Event functionality removed
     
     // Set comments userId to null or mark as deleted
     await Comment.updateMany({ userId: id }, { userId: null, commentText: "[Deleted User]" });
@@ -840,6 +841,235 @@ exports.getFamilyMembers = catchAsyncErrors(async (req, res, next) => {
     count: familyMembers.length,
     subFamilyNumber,
     familyMembers,
+  });
+});
+
+/**
+ * Get combined family members (Users + FamilyMembers) by subFamilyNumber with search and pagination
+ * GET /api/users/family-complete/:subFamilyNumber
+ */
+exports.getCombinedFamilyMembers = catchAsyncErrors(async (req, res, next) => {
+  const { subFamilyNumber } = req.params;
+  const { page = 1, limit = 10, search = "", type = "all" } = req.query;
+
+  if (!subFamilyNumber) {
+    return next(new ErrorHandler("Sub-family number is required", 400));
+  }
+
+  const pageNum = parseInt(page);
+  const limitNum = parseInt(limit);
+  const skip = (pageNum - 1) * limitNum;
+
+  // Build search regex
+  const searchRegex = search
+    ? new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i")
+    : null;
+
+  // Fetch users and family members in parallel
+  const FamilyMember = require("../models/familyMemberModel");
+
+  let usersQuery = {
+    subFamilyNumber,
+    isActive: true,
+    deletedAt: null,
+    status: "approved",
+  };
+
+  let familyMembersQuery = {
+    subFamilyNumber,
+    approvalStatus: "approved",
+    isActive: true,
+    deletedAt: null,
+  };
+
+  // Apply search filter if provided
+  if (searchRegex) {
+    usersQuery.$or = [
+      { firstName: searchRegex },
+      { middleName: searchRegex },
+      { lastName: searchRegex },
+      { email: searchRegex },
+      { mobileNumber: searchRegex },
+    ];
+
+    familyMembersQuery.$or = [
+      { firstName: searchRegex },
+      { middleName: searchRegex },
+      { lastName: searchRegex },
+      { email: searchRegex },
+      { mobileNumber: searchRegex },
+    ];
+  }
+
+  // Fetch based on type filter
+  let users = [];
+  let familyMembers = [];
+
+  if (type === "all" || type === "users") {
+    users = await User.find(usersQuery)
+      .select("-password -passwordResetToken -passwordResetExpires")
+      .sort({ createdAt: 1 })
+      .lean();
+  }
+
+  if (type === "all" || type === "familyMembers") {
+    familyMembers = await FamilyMember.find(familyMembersQuery)
+      .select("-__v")
+      .sort({ createdAt: 1 })
+      .lean();
+  }
+
+  // Normalize data structure - combine both types
+  const combinedMembers = [];
+
+  // Add users with type indicator
+  users.forEach((user) => {
+    combinedMembers.push({
+      ...user,
+      memberType: "user",
+      id: user._id,
+    });
+  });
+
+  // Add family members with type indicator
+  familyMembers.forEach((member) => {
+    combinedMembers.push({
+      ...member,
+      memberType: "familyMember",
+      id: member._id,
+    });
+  });
+
+  // Sort combined array by name (first name)
+  combinedMembers.sort((a, b) => {
+    const nameA = (a.firstName || "").toLowerCase();
+    const nameB = (b.firstName || "").toLowerCase();
+    return nameA.localeCompare(nameB);
+  });
+
+  // Apply pagination
+  const total = combinedMembers.length;
+  const paginatedMembers = combinedMembers.slice(skip, skip + limitNum);
+  const totalPages = Math.ceil(total / limitNum);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      members: paginatedMembers,
+      pagination: {
+        currentPage: pageNum,
+        totalPages,
+        total,
+        limit: limitNum,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1,
+      },
+      subFamilyNumber,
+    },
+  });
+});
+
+/**
+ * Get all users and family members (Admin only)
+ * GET /api/users/admin/all-users
+ */
+exports.getAllUsersAndFamilyMembers = catchAsyncErrors(async (req, res, next) => {
+  const {
+    page = 1,
+    limit = 20,
+    type, // 'user' or 'family_member' or undefined for all
+    status, // For users: pending, approved, rejected
+    approvalStatus, // For family members: pending, approved, rejected
+    search,
+    subFamilyNumber,
+  } = req.query;
+
+  const skip = (parseInt(page) - 1) * parseInt(limit);
+  const results = [];
+
+  // Get Users if type is 'user' or undefined
+  if (!type || type === "user") {
+    const userFilter = {};
+    if (status) userFilter.status = status;
+    if (subFamilyNumber) userFilter.subFamilyNumber = subFamilyNumber;
+    if (search) {
+      userFilter.$or = [
+        { firstName: { $regex: search, $options: "i" } },
+        { lastName: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { mobileNumber: { $regex: search, $options: "i" } },
+        { subFamilyNumber: { $regex: search, $options: "i" } },
+      ];
+    }
+    userFilter.isActive = true;
+    userFilter.deletedAt = null;
+
+    const users = await User.find(userFilter)
+      .select("-password -passwordResetToken -passwordResetExpires")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    users.forEach((user) => {
+      results.push({
+        ...user,
+        _type: "user",
+        displayName: `${user.firstName} ${user.lastName}`,
+        displayEmail: user.email || "-",
+        displayMobile: user.mobileNumber || "-",
+        displayStatus: user.status,
+      });
+    });
+  }
+
+  // Get Family Members if type is 'family_member' or undefined
+  if (!type || type === "family_member") {
+    const FamilyMember = require("../models/familyMemberModel");
+    const familyFilter = {};
+    if (approvalStatus) familyFilter.approvalStatus = approvalStatus;
+    if (subFamilyNumber) familyFilter.subFamilyNumber = subFamilyNumber;
+    if (search) {
+      familyFilter.$or = [
+        { firstName: { $regex: search, $options: "i" } },
+        { lastName: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { mobileNumber: { $regex: search, $options: "i" } },
+        { subFamilyNumber: { $regex: search, $options: "i" } },
+      ];
+    }
+    familyFilter.isActive = true;
+
+    const familyMembers = await FamilyMember.find(familyFilter)
+      .populate("userId", "firstName lastName email subFamilyNumber")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    familyMembers.forEach((member) => {
+      results.push({
+        ...member,
+        _type: "family_member",
+        displayName: `${member.firstName} ${member.middleName ? member.middleName + " " : ""}${member.lastName}`,
+        displayEmail: member.email || "-",
+        displayMobile: member.mobileNumber || "-",
+        displayStatus: member.approvalStatus,
+        displayRelationship: member.relationshipToUser,
+      });
+    });
+  }
+
+  // Sort all results by createdAt (newest first)
+  results.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  // Apply pagination
+  const total = results.length;
+  const paginatedResults = results.slice(skip, skip + parseInt(limit));
+
+  res.status(200).json({
+    success: true,
+    count: paginatedResults.length,
+    total,
+    page: parseInt(page),
+    pages: Math.ceil(total / parseInt(limit)),
+    data: paginatedResults,
   });
 });
 

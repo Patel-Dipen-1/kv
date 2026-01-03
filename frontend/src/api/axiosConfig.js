@@ -2,7 +2,7 @@ import axios from "axios";
 
 const axiosInstance = axios.create({
   baseURL:
-    process.env.REACT_APP_API_URL || "https://kv.radheytechsolutions.in/api",
+    process.env.REACT_APP_API_URL || "https://localhost:4545/api", // Use production URL
   headers: { "Content-Type": "application/json" },
 });
 

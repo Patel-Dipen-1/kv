@@ -4,7 +4,7 @@ import { useSelector, useDispatch } from "react-redux";
 import { logout } from "../../features/auth/authSlice";
 import { useEnums } from "../../hooks/useEnums";
 import { usePermission } from "../../hooks/usePermission";
-import { Menu, X, User, LogOut } from "lucide-react";
+import { Menu, X, User, LogOut, Network, Users, Calendar } from "lucide-react";
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -17,9 +17,17 @@ const Navbar = () => {
   // Get dynamic enums
   const USER_ROLES = useEnums("USER_ROLES");
   
-  // Permission checks
+  // Permission checks - all hooks must be called unconditionally
   const canViewUsers = usePermission("canViewUsers");
   const canViewCommittee = usePermission("canViewCommittee");
+  const canApproveUsers = usePermission("canApproveUsers");
+  const canViewReports = usePermission("canViewReports");
+  const canManageSettings = usePermission("canManageSettings");
+  const canManageRoles = usePermission("canManageRoles");
+  
+  // Check if user has any admin permissions (admin/moderator)
+  const hasAdminPermissions = canViewUsers || canApproveUsers || canViewReports || 
+    canManageSettings || canManageRoles;
 
   const handleLogout = () => {
     dispatch(logout());
@@ -27,17 +35,45 @@ const Navbar = () => {
     setIsUserMenuOpen(false);
   };
 
-  const isActive = (path) => location.pathname === path;
+  const isActive = (path) => {
+    if (path === "/family-members") {
+      return location.pathname.startsWith("/family-members");
+    }
+    return location.pathname === path;
+  };
 
-  const navLinks = [
-    { path: "/profile", label: "Profile", show: isAuthenticated },
-    { path: "/committee", label: "Committee", show: canViewCommittee || true }, // Public link, but check permission if logged in
-    {
-      path: "/admin/dashboard",
-      label: "Admin",
-      show: isAuthenticated && (canViewUsers || canViewCommittee), // Show if has any admin permission
+  // Base nav links for all authenticated users
+  const baseNavLinks = [
+    { path: "/profile", label: "Profile", icon: User, show: isAuthenticated },
+    { path: "/events", label: "Events", icon: Calendar, show: isAuthenticated },
+    { 
+      path: "/family-connections", 
+      label: "Family Connections", 
+      icon: Network, 
+      show: isAuthenticated 
     },
+    { 
+      path: `/family-members${user?.subFamilyNumber ? `/${user.subFamilyNumber}` : ""}`, 
+      label: "Family Members", 
+      icon: Users, 
+      show: isAuthenticated && user?.subFamilyNumber 
+    },
+    { path: "/committee", label: "Committee", icon: null, show: true }, // Public link
   ];
+
+  // Admin link (only show if has admin permissions)
+  const adminLink = {
+    path: "/admin/dashboard",
+    label: "Admin",
+    icon: null,
+    show: isAuthenticated && hasAdminPermissions,
+  };
+
+  // Combine all nav links
+  const navLinks = [
+    ...baseNavLinks,
+    ...(adminLink.show ? [adminLink] : []),
+  ].filter((link) => link.show);
 
   return (
     <nav className="bg-white shadow-md sticky top-0 z-50">
@@ -51,22 +87,24 @@ const Navbar = () => {
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-4">
-            {navLinks
-              .filter((link) => link.show)
-              .map((link) => (
+          <div className="hidden md:flex items-center space-x-2">
+            {navLinks.map((link) => {
+              const Icon = link.icon;
+              return (
                 <Link
                   key={link.path}
                   to={link.path}
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors min-h-[44px] flex items-center ${
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors min-h-[44px] flex items-center gap-2 ${
                     isActive(link.path)
                       ? "bg-blue-100 text-blue-700"
                       : "text-gray-700 hover:bg-gray-100"
                   }`}
                 >
-                  {link.label}
+                  {Icon && <Icon size={18} />}
+                  <span>{link.label}</span>
                 </Link>
-              ))}
+              );
+            })}
 
             {isAuthenticated ? (
               <div className="relative">
@@ -125,22 +163,24 @@ const Navbar = () => {
       {isMenuOpen && (
         <div className="md:hidden border-t border-gray-200">
           <div className="px-2 pt-2 pb-3 space-y-1">
-            {navLinks
-              .filter((link) => link.show)
-              .map((link) => (
+            {navLinks.map((link) => {
+              const Icon = link.icon;
+              return (
                 <Link
                   key={link.path}
                   to={link.path}
                   onClick={() => setIsMenuOpen(false)}
-                  className={`block px-3 py-2 rounded-md text-base font-medium min-h-[44px] flex items-center ${
+                  className={`block px-3 py-2 rounded-md text-base font-medium min-h-[44px] flex items-center gap-2 ${
                     isActive(link.path)
                       ? "bg-blue-100 text-blue-700"
                       : "text-gray-700 hover:bg-gray-100"
                   }`}
                 >
-                  {link.label}
+                  {Icon && <Icon size={20} />}
+                  <span>{link.label}</span>
                 </Link>
-              ))}
+              );
+            })}
 
             {isAuthenticated ? (
               <>

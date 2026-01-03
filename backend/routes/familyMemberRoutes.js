@@ -9,6 +9,8 @@ const {
   approveFamilyMember,
   rejectFamilyMember,
   getAllFamilyMembersBySubFamily,
+  adminUpdateFamilyMember,
+  adminDeleteFamilyMember,
 } = require("../controllers/familyMemberController");
 const { authenticate, authorizeRoles } = require("../middleware/auth");
 const { authorizePermission } = require("../middleware/permissions");
@@ -101,6 +103,31 @@ router.get(
   authenticate,
   authorizePermission("canViewFamilyMembers"),
   getAllFamilyMembersBySubFamily
+);
+
+/**
+ * @route   PATCH /api/admin/family-members/:id
+ * @desc    Update family member (Admin only)
+ * @access  Private (Admin - canManageUsers)
+ */
+router.patch(
+  "/admin/family-members/:id",
+  authenticate,
+  authorizePermission("canManageUsers"),
+  updateFamilyMemberValidation,
+  adminUpdateFamilyMember
+);
+
+/**
+ * @route   DELETE /api/admin/family-members/:id
+ * @desc    Delete family member (Admin only)
+ * @access  Private (Admin - canManageUsers)
+ */
+router.delete(
+  "/admin/family-members/:id",
+  authenticate,
+  authorizePermission("canManageUsers"),
+  adminDeleteFamilyMember
 );
 
 module.exports = router;

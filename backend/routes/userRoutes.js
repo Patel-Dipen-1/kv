@@ -13,6 +13,7 @@ const {
   restoreUser,
   getDeletedUsers,
   getFamilyMembers,
+  getCombinedFamilyMembers,
   getFamilyMembersForTransfer,
   searchUsers,
   getCommitteeMembers,
@@ -21,6 +22,7 @@ const {
   approveUser,
   rejectUser,
   transferPrimaryAccount,
+  getAllUsersAndFamilyMembers,
 } = require("../controllers/userController");
 const { authenticate, authorizeRoles } = require("../middleware/auth");
 const { authorizePermission, authorizeAnyPermission } = require("../middleware/permissions");
@@ -103,6 +105,17 @@ router.get("/committee-members", getCommitteeMembers);
 router.get("/family/:subFamilyNumber", authenticate, getFamilyMembers);
 
 /**
+ * @route   GET /api/users/family-complete/:subFamilyNumber
+ * @desc    Get combined family members (Users + FamilyMembers) with search and pagination
+ * @access  Private
+ */
+router.get(
+  "/family-complete/:subFamilyNumber",
+  authenticate,
+  getCombinedFamilyMembers
+);
+
+/**
  * @route   GET /api/users/:id/family-for-transfer
  * @desc    Get family members for transfer (includes User accounts and FamilyMember records)
  * @access  Private (Admin - canManageUsers)
@@ -112,6 +125,18 @@ router.get(
   authenticate,
   authorizePermission("canManageUsers"),
   getFamilyMembersForTransfer
+);
+
+/**
+ * @route   GET /api/users/admin/all-users
+ * @desc    Get all users and family members (Admin only)
+ * @access  Private (Admin - canViewUsers)
+ */
+router.get(
+  "/admin/all-users",
+  authenticate,
+  authorizePermission("canViewUsers"),
+  getAllUsersAndFamilyMembers
 );
 
 /**

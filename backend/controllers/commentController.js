@@ -1,5 +1,4 @@
 const Comment = require("../models/commentModel");
-const Event = require("../models/eventModel");
 const ErrorHandler = require("../utils/errorhander");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 
@@ -17,30 +16,8 @@ exports.createComment = catchAsyncErrors(async (req, res, next) => {
     return next(new ErrorHandler("Invalid event ID", 400));
   }
 
-  // Verify event exists
-  const event = await Event.findById(eventId);
-  if (!event) {
-    return next(new ErrorHandler("Event not found", 404));
-  }
-
-  // Check if comments are allowed
-  if (!event.allowComments) {
-    return next(new ErrorHandler("Comments are not allowed for this event", 400));
-  }
-
-  // Auto-set comment type for funeral events
+  // Event functionality removed - comments work without event validation
   let finalCommentType = commentType || "general";
-  if (event.eventType === "funeral" || event.eventType === "condolence") {
-    finalCommentType = "condolence";
-  } else if (
-    event.eventType === "marriage" ||
-    event.eventType === "birthday" ||
-    event.eventType === "anniversary"
-  ) {
-    if (!commentType) {
-      finalCommentType = "congratulation";
-    }
-  }
 
   // Check if parent comment exists (for replies)
   if (parentCommentId) {
@@ -67,10 +44,7 @@ exports.createComment = catchAsyncErrors(async (req, res, next) => {
     attachedImage: attachedImage || undefined,
   });
 
-  // Update event comment count
-  await Event.findByIdAndUpdate(eventId, {
-    $inc: { commentCount: 1 },
-  });
+  // Event functionality removed
 
   const populatedComment = await Comment.findById(comment._id)
     .populate("userId", "firstName lastName profileImage")
@@ -106,10 +80,7 @@ exports.getCommentsByEvent = catchAsyncErrors(async (req, res, next) => {
     });
   }
 
-  const event = await Event.findById(eventId);
-  if (!event) {
-    return next(new ErrorHandler("Event not found", 404));
-  }
+  // Event functionality removed - comments work without event validation
 
   const query = {
     eventId,
@@ -238,10 +209,7 @@ exports.deleteComment = catchAsyncErrors(async (req, res, next) => {
   comment.commentText = "[Deleted by user]";
   await comment.save();
 
-  // Update event comment count
-  await Event.findByIdAndUpdate(comment.eventId, {
-    $inc: { commentCount: -1 },
-  });
+  // Event functionality removed
 
   res.status(200).json({
     success: true,
@@ -310,11 +278,7 @@ exports.replyToComment = catchAsyncErrors(async (req, res, next) => {
     return next(new ErrorHandler("Cannot reply to a reply (max 2 levels)", 400));
   }
 
-  // Get event from parent comment
-  const event = await Event.findById(parentComment.eventId);
-  if (!event || !event.allowComments) {
-    return next(new ErrorHandler("Comments are not allowed for this event", 400));
-  }
+  // Event functionality removed - replies work without event validation
 
   const reply = await Comment.create({
     commentText,
@@ -330,10 +294,7 @@ exports.replyToComment = catchAsyncErrors(async (req, res, next) => {
     .populate("userId", "firstName lastName profileImage")
     .populate("parentCommentId", "commentText userId");
 
-  // Update event comment count
-  await Event.findByIdAndUpdate(parentComment.eventId, {
-    $inc: { commentCount: 1 },
-  });
+  // Event functionality removed
 
   res.status(201).json({
     success: true,
@@ -400,7 +361,6 @@ exports.getPendingComments = catchAsyncErrors(async (req, res, next) => {
     isActive: true,
   })
     .populate("userId", "firstName lastName email")
-    .populate("eventId", "eventName")
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(parseInt(limit));

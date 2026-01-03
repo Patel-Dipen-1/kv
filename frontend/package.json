@@ -57,5 +57,5 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "https://kv.radheytechsolutions.in/api"
+  "proxy": "https://localhost:4545/api"
 }

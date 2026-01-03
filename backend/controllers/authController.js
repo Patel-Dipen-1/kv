@@ -2,6 +2,8 @@ const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const ErrorHandler = require("../utils/errorhander");
 const User = require("../models/userModel");
 const sendToken = require("../utils/jwtToken");
+const { normalizePhone, formatPhoneForStorage } = require("../utils/phoneUtils");
+const MESSAGES = require("../constants/authMessages");
 const crypto = require("crypto");
 
 /**
@@ -127,10 +129,11 @@ exports.register = catchAsyncErrors(async (req, res, next) => {
  * POST /api/auth/login
  */
 exports.login = catchAsyncErrors(async (req, res, next) => {
-  const { emailOrMobile, password } = req.body;
+  let { emailOrMobile, password } = req.body;
+  emailOrMobile = String(emailOrMobile).trim();
 
   if (!emailOrMobile || !password) {
-    return next(new ErrorHandler("Please provide email/mobile and password", 400));
+    return next(new ErrorHandler(MESSAGES.AUTH.EMAIL_OR_MOBILE_REQUIRED, 400));
   }
 
   // Find user by email or mobile number with role populated (exclude deleted users)
@@ -145,9 +148,15 @@ exports.login = catchAsyncErrors(async (req, res, next) => {
       .select("+password")
       .populate("roleRef");
   } else {
-    // It's a mobile number - format it
-    const cleanedMobile = emailOrMobile.replace(/^\+91/, "").replace(/\s/g, "");
-    const formattedMobile = `+91${cleanedMobile}`;
+    // It's a mobile number - normalize and format it
+    const normalizedPhone = normalizePhone(emailOrMobile);
+    if (!normalizedPhone) {
+      return next(new ErrorHandler(MESSAGES.AUTH.INVALID_CREDENTIALS, 401));
+    }
+    const formattedMobile = formatPhoneForStorage(normalizedPhone);
+    if (!formattedMobile) {
+      return next(new ErrorHandler(MESSAGES.AUTH.INVALID_CREDENTIALS, 401));
+    }
     user = await User.findOne({
       mobileNumber: formattedMobile,
       isActive: true,
@@ -158,28 +167,23 @@ exports.login = catchAsyncErrors(async (req, res, next) => {
   }
 
   if (!user) {
-    return next(new ErrorHandler("Invalid email/mobile or password", 401));
+    return next(new ErrorHandler(MESSAGES.AUTH.INVALID_CREDENTIALS, 401));
   }
 
   // Check if user is active
   if (!user.isActive) {
-    return next(new ErrorHandler("Your account has been deactivated", 403));
+    return next(new ErrorHandler(MESSAGES.AUTH.ACCOUNT_DEACTIVATED, 403));
   }
 
   // Check if user is approved
   if (user.status !== "approved") {
-    return next(
-      new ErrorHandler(
-        "Your account is pending approval. Please wait for admin approval.",
-        403
-      )
-    );
+    return next(new ErrorHandler(MESSAGES.AUTH.ACCOUNT_PENDING_APPROVAL, 403));
   }
 
   // Verify password
   const isPasswordMatched = await user.comparePassword(password);
   if (!isPasswordMatched) {
-    return next(new ErrorHandler("Invalid email/mobile or password", 401));
+    return next(new ErrorHandler(MESSAGES.AUTH.INVALID_CREDENTIALS, 401));
   }
 
   // Check if user is using default password

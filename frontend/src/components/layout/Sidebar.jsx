@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Clock, CheckCircle, XCircle, Menu, X, Users, History, Settings, Shield, Calendar, UserX, Network } from "lucide-react";
+import { useSelector } from "react-redux";
+import { LayoutDashboard, Clock, CheckCircle, XCircle, Menu, X, Users, History, Settings, Shield, UserX, Network, Calendar } from "lucide-react";
 import { usePermission } from "../../hooks/usePermission";
 
 const Sidebar = () => {
@@ -16,9 +17,22 @@ const Sidebar = () => {
   const canViewReports = usePermission("canViewReports");
   const canManageSettings = usePermission("canManageSettings");
   const canManageRoles = usePermission("canManageRoles");
-  const canViewEvents = usePermission("canViewEvents");
 
-  const isActive = (path) => location.pathname === path;
+  // Check if user has any admin permissions (show sidebar only for admin/moderator)
+  const hasAdminPermissions = canViewUsers || canApproveUsers || canViewReports || 
+    canManageSettings || canManageRoles;
+
+  // Don't render sidebar for normal users (no admin permissions)
+  if (!hasAdminPermissions) {
+    return null;
+  }
+
+  const isActive = (path) => {
+    if (path === "/admin/events") {
+      return location.pathname.startsWith("/admin/events");
+    }
+    return location.pathname === path;
+  };
 
   const menuItems = [
     { 
@@ -28,10 +42,10 @@ const Sidebar = () => {
       show: true, // Always show dashboard
     },
     { 
-      path: "/events", 
+      path: "/admin/events", 
       label: "Events", 
       icon: Calendar,
-      show: true, // All logged-in users can view events
+      show: true, // Show for admin
     },
     { 
       path: "/admin/pending", 
@@ -43,6 +57,12 @@ const Sidebar = () => {
       path: "/admin/approved", 
       label: "Approved Users", 
       icon: CheckCircle,
+      show: canViewUsers, // Only if can view users
+    },
+    { 
+      path: "/admin/all-users", 
+      label: "All Users & Family", 
+      icon: Users,
       show: canViewUsers, // Only if can view users
     },
     { 
