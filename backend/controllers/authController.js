@@ -10,33 +10,46 @@ const crypto = require("crypto");
  * Register a new user
  * POST /api/auth/register
  */
+/**
+ * Register a new user - PHASE 1: BASIC REGISTRATION ONLY
+ * Only collects: firstName, lastName, dateOfBirth, email, mobileNumber, password
+ * POST /api/auth/register
+ */
 exports.register = catchAsyncErrors(async (req, res, next) => {
   const {
     firstName,
-    middleName,
     lastName,
-    address,
-    age,
     dateOfBirth,
     mobileNumber,
     email,
-    occupationType,
-    occupationTitle,
-    companyOrBusinessName,
-    position,
-    qualification,
-    maritalStatus,
-    samaj,
-    profileImage,
-    subFamilyNumber,
     password,
+    confirmPassword,
   } = req.body;
+
+  // Validate required basic fields
+  if (!firstName || !lastName || !dateOfBirth || !email || !mobileNumber || !password) {
+    return next(new ErrorHandler("All fields are required: First Name, Last Name, Date of Birth, Email, Mobile Number, and Password", 400));
+  }
+
+  // Validate password confirmation
+  if (password !== confirmPassword) {
+    return next(new ErrorHandler("Passwords do not match", 400));
+  }
+
+  // Validate password strength
+  if (password.length < 8) {
+    return next(new ErrorHandler("Password must be at least 8 characters", 400));
+  }
 
   // Normalize email to lowercase for comparison
   const normalizedEmail = email.toLowerCase().trim();
 
+  // Validate email format
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    return next(new ErrorHandler("Please enter a valid email address", 400));
+  }
+
   // Check if email already exists (case-insensitive) - only for active/pending/approved users
-  // Exclude rejected and deleted users so their email/phone can be reused
   const existingEmail = await User.findOne({
     email: { $regex: new RegExp(`^${normalizedEmail}$`, "i") },
     status: { $in: ["pending", "approved"] },
@@ -55,12 +68,11 @@ exports.register = catchAsyncErrors(async (req, res, next) => {
   // Format mobile number for comparison
   const cleanedMobile = mobileNumber.replace(/^\+91/, "").replace(/\s/g, "").trim();
   if (!/^\d{10}$/.test(cleanedMobile)) {
-    return next(new ErrorHandler("Invalid mobile number format", 400));
+    return next(new ErrorHandler("Invalid mobile number format. Please enter a valid 10-digit Indian mobile number", 400));
   }
   const formattedMobile = `+91${cleanedMobile}`;
 
   // Check if mobile number already exists - only for active/pending/approved users
-  // Exclude rejected and deleted users so their email/phone can be reused
   const existingMobile = await User.findOne({
     mobileNumber: formattedMobile,
     status: { $in: ["pending", "approved"] },
@@ -76,117 +88,31 @@ exports.register = catchAsyncErrors(async (req, res, next) => {
     );
   }
 
-  // Password is now required - validate it
-  if (!password) {
-    return next(new ErrorHandler("Password is required", 400));
+  // Validate date of birth
+  const dob = new Date(dateOfBirth);
+  if (isNaN(dob.getTime())) {
+    return next(new ErrorHandler("Please enter a valid date of birth", 400));
   }
-  
-  if (password.length < 8) {
-    return next(new ErrorHandler("Password must be at least 8 characters", 400));
+  if (dob > new Date()) {
+    return next(new ErrorHandler("Date of birth cannot be in the future", 400));
   }
-
-  // Validate location using library service
-  const locationService = require("../services/locationService");
-  const Location = require("../models/locationModel");
-  
-  if (address && address.city) {
-    const cityName = address.city.trim();
-    const stateName = address.state?.trim() || null;
-    const countryCode = address.country?.toLowerCase() === "india" ? "IN" : "IN"; // Default to India
-    
-    // Validate city exists in library
-    const cityData = locationService.getCityByName(cityName, stateName, countryCode);
-    
-    if (!cityData) {
-      return next(
-        new ErrorHandler(
-          `City "${cityName}" not found. Please enter a valid city name.`,
-          400
-        )
-      );
-    }
-    
-    // Validate state matches city
-    if (stateName && cityData.state.toLowerCase() !== stateName.toLowerCase()) {
-      return next(
-        new ErrorHandler(
-          `State "${stateName}" does not match city "${cityName}". Expected state: "${cityData.state}".`,
-          400
-        )
-      );
-    }
-    
-    // Validate country matches
-    if (address.country && cityData.country.toLowerCase() !== address.country.toLowerCase()) {
-      return next(
-        new ErrorHandler(
-          `Country "${address.country}" does not match city "${cityName}". Expected country: "${cityData.country}".`,
-          400
-        )
-      );
-    }
-    
-    // Validate pincode if provided
-    if (address.pincode) {
-      // Try to get pincode from database
-      const pincodeData = await locationService.getPincodeForCity(cityName, cityData.state, countryCode);
-      
-      if (pincodeData.pincodes.length > 0) {
-        // Validate pincode is in the list
-        if (!pincodeData.pincodes.includes(address.pincode)) {
-          return next(
-            new ErrorHandler(
-              `Pincode "${address.pincode}" is not valid for city "${cityName}". Valid pincodes: ${pincodeData.pincodes.join(", ")}`,
-              400
-            )
-          );
-        }
-      } else {
-        // If no pincode in database, validate format only
-        if (!/^\d{6}$/.test(address.pincode)) {
-          return next(
-            new ErrorHandler(
-              `Pincode must be a 6-digit number.`,
-              400
-            )
-          );
-        }
-      }
-    }
-  }
-
-  const userPassword = password;
 
   // Find default "User" role to assign to new registrations
   const Role = require("../models/roleModel");
   const defaultUserRole = await Role.findOne({ roleKey: "user" });
 
-  // Create new user with status: "pending" by default
+  // Create new user with ONLY basic fields - status: "pending", profileCompleted: false
   const user = await User.create({
     firstName,
-    middleName,
-    lastName,
-    address,
-    age,
-    dateOfBirth,
+    lastName, // Only first and last name at registration
+    dateOfBirth: dob,
     mobileNumber: formattedMobile,
     email: normalizedEmail,
-    occupationType,
-    occupationTitle,
-    companyOrBusinessName,
-    position,
-    qualification,
-    maritalStatus,
-    samaj,
-    profileImage,
-    subFamilyNumber,
-    password: userPassword,
+    password,
     status: "pending", // Admin must approve
+    profileCompleted: false, // Profile not completed yet
     roleRef: defaultUserRole?._id, // Assign default user role if exists
   });
-
-  // Generate JWT token
-  const token = user.getJWTToken();
 
   // Return user data without password
   const userData = user.toObject();
@@ -196,9 +122,8 @@ exports.register = catchAsyncErrors(async (req, res, next) => {
 
   res.status(201).json({
     success: true,
-    message: "Registration successful! Please login.",
+    message: "Registration submitted. Waiting for approval.",
     user: userData,
-    token,
   });
 });
 
@@ -255,6 +180,9 @@ exports.login = catchAsyncErrors(async (req, res, next) => {
 
   // Check if user is approved
   if (user.status !== "approved") {
+    if (user.status === "pending") {
+      return next(new ErrorHandler("Your account is not approved yet. Please wait for admin approval.", 403));
+    }
     return next(new ErrorHandler(MESSAGES.AUTH.ACCOUNT_PENDING_APPROVAL, 403));
   }
 
@@ -345,5 +273,176 @@ exports.resetPassword = catchAsyncErrors(async (req, res, next) => {
 
   // Auto-login user after password reset
   sendToken(user, 200, res);
+});
+
+/**
+ * Complete user profile - PHASE 2: FULL PROFILE COMPLETION
+ * POST /api/auth/complete-profile
+ * Requires: authenticated user, status = approved, profileCompleted = false
+ */
+exports.completeProfile = catchAsyncErrors(async (req, res, next) => {
+  const userId = req.user.id;
+  
+  // Find user
+  const user = await User.findById(userId);
+  if (!user) {
+    return next(new ErrorHandler("User not found", 404));
+  }
+
+  // Check if user is approved
+  if (user.status !== "approved") {
+    return next(new ErrorHandler("Your account must be approved before completing profile", 403));
+  }
+
+  // Check if profile already completed
+  if (user.profileCompleted) {
+    return next(new ErrorHandler("Profile already completed", 400));
+  }
+
+  const {
+    middleName,
+    address,
+    age,
+    gender,
+    emergencyContact,
+    occupationType,
+    occupationTitle,
+    companyOrBusinessName,
+    position,
+    qualification,
+    maritalStatus,
+    samaj,
+    bloodGroup,
+    profileImage,
+  } = req.body;
+
+  // Validate all required fields
+  if (!address || !address.line1 || !address.city || !address.state || !address.country || !address.pincode) {
+    return next(new ErrorHandler("All address fields are required", 400));
+  }
+
+  if (!gender) {
+    return next(new ErrorHandler("Gender is required", 400));
+  }
+
+  if (!occupationType) {
+    return next(new ErrorHandler("Occupation type is required", 400));
+  }
+
+  if (!maritalStatus) {
+    return next(new ErrorHandler("Marital status is required", 400));
+  }
+
+  if (!samaj) {
+    return next(new ErrorHandler("Samaj/Community is required", 400));
+  }
+
+  if (!bloodGroup) {
+    return next(new ErrorHandler("Blood group is required", 400));
+  }
+
+  // Validate location using library service
+  const locationService = require("../services/locationService");
+  
+  if (address && address.city) {
+    const cityName = address.city.trim();
+    const stateName = address.state?.trim() || null;
+    const countryCode = address.country?.toLowerCase() === "india" ? "IN" : "IN";
+    
+    // Validate city exists in library
+    const cityData = locationService.getCityByName(cityName, stateName, countryCode);
+    
+    if (!cityData) {
+      return next(
+        new ErrorHandler(
+          `City "${cityName}" not found. Please enter a valid city name.`,
+          400
+        )
+      );
+    }
+    
+    // Validate state matches city
+    if (stateName && cityData.state.toLowerCase() !== stateName.toLowerCase()) {
+      return next(
+        new ErrorHandler(
+          `State "${stateName}" does not match city "${cityName}". Expected state: "${cityData.state}".`,
+          400
+        )
+      );
+    }
+    
+    // Validate pincode if provided
+    if (address.pincode) {
+      const pincodeData = await locationService.getPincodeForCity(cityName, cityData.state, countryCode);
+      
+      if (pincodeData.pincodes.length > 0) {
+        if (!pincodeData.pincodes.includes(address.pincode)) {
+          return next(
+            new ErrorHandler(
+              `Pincode "${address.pincode}" is not valid for city "${cityName}". Valid pincodes: ${pincodeData.pincodes.join(", ")}`,
+              400
+            )
+          );
+        }
+      } else {
+        if (!/^\d{6}$/.test(address.pincode)) {
+          return next(
+            new ErrorHandler(
+              `Pincode must be a 6-digit number.`,
+              400
+            )
+          );
+        }
+      }
+    }
+  }
+
+  // Calculate age from dateOfBirth if not provided
+  let calculatedAge = age;
+  if (!calculatedAge && user.dateOfBirth) {
+    const dob = new Date(user.dateOfBirth);
+    const today = new Date();
+    calculatedAge = today.getFullYear() - dob.getFullYear();
+    const monthDiff = today.getMonth() - dob.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+      calculatedAge--;
+    }
+  }
+
+  // Update user with full profile data
+  user.middleName = middleName || "";
+  user.address = address;
+  user.age = calculatedAge;
+  user.gender = gender;
+  // Emergency contact is optional - only save if provided
+  if (emergencyContact && (emergencyContact.name || emergencyContact.phone)) {
+    user.emergencyContact = emergencyContact;
+  }
+  user.occupationType = occupationType;
+  user.occupationTitle = occupationTitle || "";
+  user.companyOrBusinessName = companyOrBusinessName || "";
+  user.position = position || "";
+  user.qualification = qualification || "";
+  user.maritalStatus = maritalStatus;
+  user.samaj = samaj;
+  user.bloodGroup = bloodGroup;
+  if (profileImage) {
+    user.profileImage = profileImage;
+  }
+  user.profileCompleted = true; // Mark profile as completed
+
+  await user.save();
+
+  // Return updated user data
+  const userData = user.toObject();
+  delete userData.password;
+  delete userData.passwordResetToken;
+  delete userData.passwordResetExpires;
+
+  res.status(200).json({
+    success: true,
+    message: "Profile completed successfully",
+    user: userData,
+  });
 });
 

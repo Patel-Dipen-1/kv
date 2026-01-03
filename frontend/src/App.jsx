@@ -9,6 +9,7 @@ import Login from "./features/auth/Login";
 import Register from "./features/auth/Register";
 import ForgotPassword from "./features/auth/ForgotPassword";
 import ResetPassword from "./features/auth/ResetPassword";
+import CompleteProfile from "./features/auth/CompleteProfile";
 
 // User Pages
 import Profile from "./features/users/Profile";
@@ -34,6 +35,9 @@ import Committee from "./features/committee/Committee";
 // Family Connections
 import FamilyConnections from "./features/relationships/FamilyConnections";
 import FamilyMembersList from "./features/family/FamilyMembersList";
+
+// Search
+import FamilySearch from "./features/search/FamilySearch";
 
 // Event Pages
 import EventList from "./features/events/EventList";
@@ -76,6 +80,11 @@ function App() {
         <Route path="/reset-password/:token" element={<ResetPassword />} />
         <Route path="/committee" element={<Committee />} />
 
+        {/* Complete Profile Route - Must be accessible even if profile not completed */}
+        <Route element={<ProtectedRoute skipProfileCheck={true} />}>
+          <Route path="/complete-profile" element={<CompleteProfile />} />
+        </Route>
+
         {/* Protected User Routes */}
         <Route element={<ProtectedRoute />}>
           <Route path="/profile" element={<Profile />} />
@@ -83,6 +92,7 @@ function App() {
           <Route path="/profile/change-password" element={<ChangePassword />} />
           <Route path="/family-connections" element={<FamilyConnections />} />
           <Route path="/family-members/:subFamilyNumber?" element={<FamilyMembersList />} />
+          <Route path="/search" element={<FamilySearch />} />
         </Route>
 
         {/* Protected Admin Routes - Using Permissions */}

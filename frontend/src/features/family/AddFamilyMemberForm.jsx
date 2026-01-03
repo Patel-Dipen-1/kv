@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
@@ -28,6 +28,10 @@ const AddFamilyMemberForm = ({ onClose, onSuccess, isRequestMode = false, editDa
   const [citySuggestions, setCitySuggestions] = useState([]);
   const [showCitySuggestions, setShowCitySuggestions] = useState(false);
   const [isSearchingCities, setIsSearchingCities] = useState(false);
+  const searchAbortControllerRef = useRef(null);
+  const locationAbortControllerRef = useRef(null);
+  const lastSearchedCityRef = useRef("");
+  const lastLoadedCityRef = useRef("");
   
   const isEditMode = !!editData;
   
@@ -178,9 +182,31 @@ const AddFamilyMemberForm = ({ onClose, onSuccess, isRequestMode = false, editDa
   const loadLocationData = async (cityName, stateName, countryCode = "IN") => {
     if (!cityName || cityName.trim().length < 3) return;
     
+    const cityKey = `${cityName.trim()}_${stateName || ""}_${countryCode}`;
+    
+    // Don't load if same location is already loaded
+    if (cityKey === lastLoadedCityRef.current && selectedLocation) {
+      return;
+    }
+    
+    // Cancel previous location request if exists
+    if (locationAbortControllerRef.current) {
+      locationAbortControllerRef.current.abort();
+    }
+    
+    // Create new AbortController for this request
+    const abortController = new AbortController();
+    locationAbortControllerRef.current = abortController;
+    
     setIsLoadingLocation(true);
     try {
       const response = await getLocationByCity(cityName, stateName, countryCode);
+      
+      // Check if request was aborted
+      if (abortController.signal.aborted) {
+        return;
+      }
+      
       if (response.success && response.data) {
         const location = response.data;
         setSelectedLocation(location);
@@ -200,13 +226,20 @@ const AddFamilyMemberForm = ({ onClose, onSuccess, isRequestMode = false, editDa
         trigger("address.state");
         trigger("address.country");
         trigger("address.pincode");
+        lastLoadedCityRef.current = cityKey;
       } else {
         setSelectedLocation(null);
       }
     } catch (error) {
+      // Ignore abort errors
+      if (error.name === 'AbortError' || abortController.signal.aborted) {
+        return;
+      }
       setSelectedLocation(null);
     } finally {
-      setIsLoadingLocation(false);
+      if (!abortController.signal.aborted) {
+        setIsLoadingLocation(false);
+      }
     }
   };
 
@@ -214,68 +247,124 @@ const AddFamilyMemberForm = ({ onClose, onSuccess, isRequestMode = false, editDa
   const [isCitySelected, setIsCitySelected] = useState(false);
   
   useEffect(() => {
-    // Reset selection flag when city input changes manually
-    if (!isCitySelected) {
-      const searchCitiesDebounced = async () => {
-        if (!city || city.trim().length < 2) {
-          setCitySuggestions([]);
-          setShowCitySuggestions(false);
+    // Cancel previous search if exists
+    if (searchAbortControllerRef.current) {
+      searchAbortControllerRef.current.abort();
+    }
+    
+    // Don't search if city was just selected
+    if (isCitySelected) {
+      setCitySuggestions([]);
+      setShowCitySuggestions(false);
+      return;
+    }
+    
+    const cityTrimmed = city?.trim() || "";
+    
+    // Don't search if same city is already searched
+    if (cityTrimmed === lastSearchedCityRef.current && cityTrimmed.length >= 2) {
+      return;
+    }
+    
+    if (cityTrimmed.length >= 2) {
+      const timer = setTimeout(async () => {
+        // Double check that city wasn't selected during the delay
+        if (isCitySelected || !city || city.trim() !== cityTrimmed) {
           return;
         }
         
+        // Create new AbortController for this search
+        const abortController = new AbortController();
+        searchAbortControllerRef.current = abortController;
+        
         setIsSearchingCities(true);
         try {
-          const response = await searchCities(city.trim());
-          if (response.success && response.data) {
-            setCitySuggestions(response.data.slice(0, 10));
-            setShowCitySuggestions(true);
+          const response = await searchCities(cityTrimmed);
+          
+          // Check if request was aborted
+          if (abortController.signal.aborted) {
+            return;
+          }
+          
+          if (response.success && response.data && response.data.length > 0) {
+            // Only update if city wasn't selected during the API call
+            if (!isCitySelected && city?.trim() === cityTrimmed) {
+              setCitySuggestions(response.data.slice(0, 10));
+              setShowCitySuggestions(true);
+              lastSearchedCityRef.current = cityTrimmed;
+            }
           } else {
             setCitySuggestions([]);
             setShowCitySuggestions(false);
           }
         } catch (error) {
+          // Ignore abort errors
+          if (error.name === 'AbortError' || abortController.signal.aborted) {
+            return;
+          }
           console.error("Error searching cities:", error);
           setCitySuggestions([]);
           setShowCitySuggestions(false);
         } finally {
-          setIsSearchingCities(false);
+          if (!abortController.signal.aborted) {
+            setIsSearchingCities(false);
+          }
+        }
+      }, 300);
+      return () => {
+        clearTimeout(timer);
+        if (searchAbortControllerRef.current) {
+          searchAbortControllerRef.current.abort();
         }
       };
-      
-      const timer = setTimeout(searchCitiesDebounced, 300);
-      return () => clearTimeout(timer);
+    } else {
+      // Clear suggestions if city is too short
+      setCitySuggestions([]);
+      setShowCitySuggestions(false);
+      lastSearchedCityRef.current = "";
     }
   }, [city, isCitySelected]);
 
-  const handleCitySelect = (suggestion) => {
+  const handleCitySelect = async (suggestion) => {
+    // Immediately close dropdown and clear ALL state
     setIsCitySelected(true);
-    setValue("address.city", suggestion.city, { shouldValidate: true });
     setShowCitySuggestions(false);
     setCitySuggestions([]);
+    setIsSearchingCities(false);
+    
+    // Set city value - this will trigger onChange, but isCitySelected will prevent search
+    setValue("address.city", suggestion.city, { shouldValidate: true });
+    
     // Clear previous location data
     setSelectedLocation(null);
     setValue("address.state", "", { shouldValidate: false });
     setValue("address.pincode", "", { shouldValidate: false });
-    // Load new location data
-    loadLocationData(suggestion.city, suggestion.state, "IN");
-    // Reset flag after a short delay to allow for future searches
+    
+    // Load location data
+    await loadLocationData(suggestion.city, suggestion.state, "IN");
+    
+    // Focus on pincode field after a short delay
     setTimeout(() => {
-      setIsCitySelected(false);
-    }, 500);
+      const pincodeInput = document.querySelector('input[name="address.pincode"], select[name="address.pincode"]');
+      if (pincodeInput) {
+        pincodeInput.focus();
+      }
+    }, 300);
+    
+    // Reset flag after delay to allow future searches (only if user hasn't typed again)
+    setTimeout(() => {
+      // Only reset if the city value hasn't changed (user hasn't typed)
+      const currentCity = document.querySelector('input[name="address.city"]')?.value;
+      if (currentCity === suggestion.city) {
+        setIsCitySelected(false);
+      }
+    }, 1500);
   };
 
-  // Auto-load location when city changes (only if not from dropdown selection)
-  useEffect(() => {
-    if (city && city.trim().length >= 3 && !isCitySelected) {
-      const timer = setTimeout(() => {
-        // Only auto-load if city was typed (not selected from dropdown)
-        if (!selectedLocation || selectedLocation.city !== city.trim()) {
-          loadLocationData(city.trim(), null, "IN");
-        }
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [city, isCitySelected]);
+  // REMOVED: Auto-load location useEffect - This was causing duplicate API calls
+  // Location is now loaded only when:
+  // 1. City is selected from dropdown (handleCitySelect)
+  // 2. User blurs the city input field (onBlur)
 
   const onSubmit = async (data) => {
     console.log("Form submitted with data:", data);
@@ -695,27 +784,35 @@ const AddFamilyMemberForm = ({ onClose, onSuccess, isRequestMode = false, editDa
                   value={city || ""}
                   onChange={(e) => {
                     const value = e.target.value;
-                    setIsCitySelected(false); // Reset selection flag when user types
+                    // Reset selection flag and clear suggestions when user types
+                    setIsCitySelected(false);
+                    setShowCitySuggestions(false);
+                    setCitySuggestions([]);
+                    setSelectedLocation(null);
                     setValue("address.city", value, { shouldValidate: true });
                     if (value !== city) {
-                      setSelectedLocation(null);
                       setValue("address.state", "", { shouldValidate: false });
                       setValue("address.pincode", "", { shouldValidate: false });
                     }
                   }}
                   onFocus={() => {
-                    // Show suggestions when user focuses on input
-                    if (city && city.trim().length >= 2 && citySuggestions.length > 0) {
+                    // Only show suggestions if city is not already selected and we have suggestions
+                    if (!isCitySelected && city && city.trim().length >= 2 && citySuggestions.length > 0) {
                       setShowCitySuggestions(true);
                     }
                   }}
                   onBlur={() => {
-                    // Delay hiding suggestions to allow click on suggestion
+                    // Close suggestions on blur, but only if city wasn't just selected
                     setTimeout(() => {
-                      setShowCitySuggestions(false);
-                      // Only auto-load if city was typed (not selected from dropdown)
-                      if (city && city.trim().length >= 3 && !isCitySelected) {
-                        loadLocationData(city.trim(), null, "IN");
+                      if (!isCitySelected) {
+                        setShowCitySuggestions(false);
+                        if (city && city.trim().length >= 3) {
+                          const cityKey = `${city.trim()}_null_IN`;
+                          // Only load if not already loaded
+                          if (cityKey !== lastLoadedCityRef.current) {
+                            loadLocationData(city.trim(), null, "IN");
+                          }
+                        }
                       }
                     }, 200);
                   }}
@@ -743,8 +840,8 @@ const AddFamilyMemberForm = ({ onClose, onSuccess, isRequestMode = false, editDa
                 </p>
               )}
               
-              {/* City Suggestions - Fixed positioning */}
-              {showCitySuggestions && citySuggestions.length > 0 && (
+              {/* City Suggestions - Only show if not already selected */}
+              {showCitySuggestions && citySuggestions.length > 0 && !isCitySelected && (
                 <div 
                   className="absolute z-[100] w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto"
                   style={{ top: '100%', left: 0 }}
@@ -764,6 +861,7 @@ const AddFamilyMemberForm = ({ onClose, onSuccess, isRequestMode = false, editDa
                       }}
                       onMouseDown={(e) => {
                         e.preventDefault();
+                        e.stopPropagation();
                         handleCitySelect(suggestion);
                       }}
                       className="w-full text-left px-4 py-2 hover:bg-blue-50 focus:bg-blue-50 focus:outline-none border-b border-gray-100 last:border-b-0 cursor-pointer"

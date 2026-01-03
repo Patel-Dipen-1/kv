@@ -5,7 +5,9 @@ const {
   login,
   forgotPassword,
   resetPassword,
+  completeProfile,
 } = require("../controllers/authController");
+const { authenticate } = require("../middleware/auth");
 const {
   registerUserValidation,
   loginValidation,
@@ -40,6 +42,13 @@ router.post("/forgot-password", forgotPasswordValidation, forgotPassword);
  * @access  Public
  */
 router.post("/reset-password/:token", resetPasswordValidation, resetPassword);
+
+/**
+ * @route   POST /api/auth/complete-profile
+ * @desc    Complete user profile after approval
+ * @access  Private (authenticated users only)
+ */
+router.post("/complete-profile", authenticate, completeProfile);
 
 module.exports = router;
 

@@ -38,8 +38,8 @@ const userSchema = new mongoose.Schema(
     address: {
       line1: {
         type: String,
-        required: [true, "Address line 1 is required"],
         trim: true,
+        // Required only when profileCompleted = true (validated in completeProfile endpoint)
       },
       line2: {
         type: String,
@@ -47,13 +47,13 @@ const userSchema = new mongoose.Schema(
       },
       city: {
         type: String,
-        required: [true, "City is required"],
         trim: true,
+        // Required only when profileCompleted = true (validated in completeProfile endpoint)
       },
       state: {
         type: String,
-        required: [true, "State is required"],
         trim: true,
+        // Required only when profileCompleted = true (validated in completeProfile endpoint)
       },
       country: {
         type: String,
@@ -66,13 +66,14 @@ const userSchema = new mongoose.Schema(
       },
       pincode: {
         type: String,
-        required: [true, "Pincode is required"],
         validate: {
           validator: function (v) {
+            if (!v) return true; // Optional during registration
             return /^\d{6}$/.test(v);
           },
           message: "Pincode must be a 6-digit number",
         },
+        // Required only when profileCompleted = true (validated in completeProfile endpoint)
       },
     },
     age: {
@@ -99,6 +100,38 @@ const userSchema = new mongoose.Schema(
       default: "Unknown",
       trim: true,
     },
+    gender: {
+      type: String,
+      enum: {
+        values: ["male", "female", "other"],
+        message: "Gender must be one of: male, female, other",
+      },
+      trim: true,
+    },
+    emergencyContact: {
+      name: {
+        type: String,
+        trim: true,
+        maxLength: [100, "Emergency contact name cannot exceed 100 characters"],
+      },
+      phone: {
+        type: String,
+        trim: true,
+        validate: {
+          validator: function (v) {
+            if (!v) return true; // Optional
+            const cleaned = v.replace(/^\+91/, "").replace(/\s/g, "");
+            return /^\d{10}$/.test(cleaned);
+          },
+          message: "Please enter a valid 10-digit Indian mobile number",
+        },
+      },
+      relationship: {
+        type: String,
+        trim: true,
+        maxLength: [50, "Relationship cannot exceed 50 characters"],
+      },
+    },
     mobileNumber: {
       type: String,
       required: [true, "Mobile number is required"],
@@ -121,11 +154,11 @@ const userSchema = new mongoose.Schema(
     },
     occupationType: {
       type: String,
-      required: [true, "Occupation type is required"],
       enum: {
         values: OCCUPATION_TYPES,
         message: `Occupation type must be one of: ${OCCUPATION_TYPES.join(", ")}`,
       },
+      // Required only when profileCompleted = true (validated in completeProfile endpoint)
     },
     occupationTitle: {
       type: String,
@@ -146,11 +179,11 @@ const userSchema = new mongoose.Schema(
     },
     maritalStatus: {
       type: String,
-      required: [true, "Marital status is required"],
       enum: {
         values: MARITAL_STATUS,
         message: `Marital status must be one of: ${MARITAL_STATUS.join(", ")}`,
       },
+      // Required only when profileCompleted = true (validated in completeProfile endpoint)
     },
     profileImage: {
       type: String,
@@ -161,8 +194,8 @@ const userSchema = new mongoose.Schema(
         values: SAMAJ_TYPES,
         message: `Samaj must be one of: ${SAMAJ_TYPES.join(", ")}`,
       },
-      required: [true, "Samaj/Community is required"],
       trim: true,
+      // Required only when profileCompleted = true (validated in completeProfile endpoint)
     },
     subFamilyNumber: {
       type: String,
@@ -258,6 +291,11 @@ const userSchema = new mongoose.Schema(
         message: `Status must be one of: ${USER_STATUS.join(", ")}`,
       },
       default: "pending",
+    },
+    profileCompleted: {
+      type: Boolean,
+      default: false,
+      // Indicates if user has completed full profile after approval
     },
     role: {
       type: String,

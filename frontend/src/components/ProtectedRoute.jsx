@@ -3,12 +3,18 @@ import { Navigate, Outlet } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { usePermission } from "../hooks/usePermission";
 
-const ProtectedRoute = ({ allowedRoles = [], requiredPermission = null }) => {
+const ProtectedRoute = ({ allowedRoles = [], requiredPermission = null, skipProfileCheck = false }) => {
   const { isAuthenticated, user } = useSelector((state) => state.auth);
   const hasPermission = usePermission(requiredPermission);
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Check if profile is completed - redirect to complete-profile if not
+  // Skip this check for the complete-profile route itself
+  if (!skipProfileCheck && user && user.status === "approved" && !user.profileCompleted) {
+    return <Navigate to="/complete-profile" replace />;
   }
 
   // Check permission if provided

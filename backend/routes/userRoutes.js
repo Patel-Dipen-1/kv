@@ -16,6 +16,8 @@ const {
   getCombinedFamilyMembers,
   getFamilyMembersForTransfer,
   searchUsers,
+  searchFamily,
+  getUserFamilyMembers,
   getCommitteeMembers,
   bulkApproveUsers,
   bulkRejectUsers,
@@ -84,6 +86,13 @@ router.get(
 );
 
 /**
+ * @route   GET /api/users/search-family
+ * @desc    Search users and families by name or Family ID (Public/Private)
+ * @access  Public (or Private if authenticated)
+ */
+router.get("/search-family", searchFamily);
+
+/**
  * @route   GET /api/committee-members
  * @desc    Get all committee members (Public)
  * @access  Public
@@ -138,6 +147,14 @@ router.get(
   authorizePermission("canViewUsers"),
   getAllUsersAndFamilyMembers
 );
+
+/**
+ * @route   GET /api/users/:userId/family-members
+ * @desc    Get family members for a specific user (on-demand fetch)
+ * @access  Public (or Private if authenticated)
+ * @note    Must be before /:id route to avoid route conflicts
+ */
+router.get("/:userId/family-members", getUserFamilyMembers);
 
 /**
  * @route   GET /api/users/:id

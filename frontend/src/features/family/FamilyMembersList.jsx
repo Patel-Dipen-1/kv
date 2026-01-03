@@ -196,14 +196,33 @@ const FamilyMembersList = () => {
               <>
                 {/* Members List */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                  {combinedFamilyMembers.map((member) => {
-                    const fullName = getFullName(member);
-                    const isUser = member.memberType === "user";
-                    const displayEmail = member.email || "N/A";
-                    const displayMobile = formatMobileNumber(member.mobileNumber);
+                  {(() => {
+                    // Remove duplicates by creating a Set of unique member identifiers
+                    const seen = new Set();
+                    const uniqueMembers = combinedFamilyMembers.filter((member) => {
+                      const memberId = member.id || member._id;
+                      const memberType = member.memberType || "member";
+                      const uniqueIdentifier = `${memberType}-${memberId}`;
+                      
+                      if (seen.has(uniqueIdentifier)) {
+                        return false; // Duplicate, skip it
+                      }
+                      seen.add(uniqueIdentifier);
+                      return true; // First occurrence, keep it
+                    });
 
-                    return (
-                      <Card key={member.id || member._id} className="p-4 hover:shadow-lg transition-shadow">
+                    return uniqueMembers.map((member, index) => {
+                      const fullName = getFullName(member);
+                      const isUser = member.memberType === "user";
+                      const displayEmail = member.email || "N/A";
+                      const displayMobile = formatMobileNumber(member.mobileNumber);
+                      
+                      // Create unique key combining memberType and ID
+                      const memberId = member.id || member._id || `temp-${index}`;
+                      const uniqueKey = `${member.memberType || "member"}-${memberId}`;
+
+                      return (
+                        <Card key={uniqueKey} className="p-4 hover:shadow-lg transition-shadow">
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex items-center space-x-3 flex-1">
                             <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
@@ -268,8 +287,9 @@ const FamilyMembersList = () => {
                           )}
                         </div>
                       </Card>
-                    );
-                  })}
+                      );
+                    });
+                  })()}
                 </div>
 
                 {/* Pagination */}

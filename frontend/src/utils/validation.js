@@ -1,39 +1,18 @@
 import * as yup from "yup";
 import { SAMAJ_TYPES, OCCUPATION_TYPES, MARITAL_STATUS } from "../constants/enums";
 
-// Registration validation schema - ALL FIELDS REQUIRED
+// Registration validation schema - PHASE 1: BASIC FIELDS ONLY
 export const registerSchema = yup.object().shape({
   firstName: yup
     .string()
     .required("First name is required")
     .min(2, "First name must be at least 2 characters")
     .max(50, "First name cannot exceed 50 characters"),
-  middleName: yup
-    .string()
-    .required("Middle name is required")
-    .max(50, "Middle name cannot exceed 50 characters"),
   lastName: yup
     .string()
     .required("Last name is required")
     .min(2, "Last name must be at least 2 characters")
     .max(50, "Last name cannot exceed 50 characters"),
-  address: yup.object().shape({
-    line1: yup.string().required("Address line 1 is required"),
-    line2: yup.string().required("Address line 2 is required"),
-    city: yup.string().required("City is required"),
-    state: yup.string().required("State is required"),
-    country: yup.string().required("Country is required"),
-    pincode: yup
-      .string()
-      .required("Pincode is required")
-      .matches(/^\d{6}$/, "Pincode must be a 6-digit number"),
-  }),
-  age: yup
-    .number()
-    .required("Age is required")
-    .min(0, "Age cannot be negative")
-    .max(120, "Age cannot exceed 120")
-    .typeError("Age must be a number"),
   dateOfBirth: yup
     .date()
     .required("Date of birth is required")
@@ -47,37 +26,6 @@ export const registerSchema = yup.object().shape({
     .string()
     .required("Email is required")
     .email("Please enter a valid email"),
-  occupationType: yup
-    .string()
-    .required("Occupation type is required")
-    .oneOf(OCCUPATION_TYPES, "Invalid occupation type"),
-  occupationTitle: yup
-    .string()
-    .required("Occupation title is required")
-    .max(100, "Occupation title cannot exceed 100 characters"),
-  companyOrBusinessName: yup
-    .string()
-    .required("Company/Business name is required")
-    .max(100, "Company/Business name cannot exceed 100 characters"),
-  position: yup
-    .string()
-    .required("Position is required")
-    .max(100, "Position cannot exceed 100 characters"),
-  qualification: yup
-    .string()
-    .required("Qualification is required")
-    .max(100, "Qualification cannot exceed 100 characters"),
-  maritalStatus: yup
-    .string()
-    .required("Marital status is required")
-    .oneOf(MARITAL_STATUS, "Invalid marital status"),
-  samaj: yup
-    .string()
-    .required("Samaj/Community is required")
-    .oneOf(SAMAJ_TYPES, "Invalid samaj/community"),
-  bloodGroup: yup
-    .string()
-    .required("Blood group is required"),
   password: yup
     .string()
     .required("Password is required")
@@ -90,6 +38,71 @@ export const registerSchema = yup.object().shape({
     .string()
     .required("Please confirm your password")
     .oneOf([yup.ref("password")], "Passwords must match"),
+});
+
+// Complete Profile validation schema - PHASE 2: FULL PROFILE
+export const completeProfileSchema = yup.object().shape({
+  middleName: yup
+    .string()
+    .max(50, "Middle name cannot exceed 50 characters"),
+  address: yup.object().shape({
+    line1: yup.string().required("Address line 1 is required"),
+    line2: yup.string(),
+    city: yup.string().required("City is required"),
+    state: yup.string().required("State is required"),
+    country: yup.string().required("Country is required"),
+    pincode: yup
+      .string()
+      .required("Pincode is required")
+      .matches(/^\d{6}$/, "Pincode must be a 6-digit number"),
+  }),
+  gender: yup
+    .string()
+    .required("Gender is required")
+    .oneOf(["male", "female", "other"], "Invalid gender"),
+  occupationType: yup
+    .string()
+    .required("Occupation type is required")
+    .oneOf(OCCUPATION_TYPES, "Invalid occupation type"),
+  occupationTitle: yup
+    .string()
+    .when("occupationType", {
+      is: (val) => val && val !== "homemaker",
+      then: (schema) => schema.required("Occupation title is required").max(100, "Occupation title cannot exceed 100 characters"),
+      otherwise: (schema) => schema.notRequired(),
+    }),
+  companyOrBusinessName: yup
+    .string()
+    .when("occupationType", {
+      is: (val) => val === "job" || val === "business",
+      then: (schema) => schema.required("Company/Business name is required").max(100, "Company/Business name cannot exceed 100 characters"),
+      otherwise: (schema) => schema.notRequired(),
+    }),
+  position: yup
+    .string()
+    .when("occupationType", {
+      is: (val) => val === "job",
+      then: (schema) => schema.required("Position is required").max(100, "Position cannot exceed 100 characters"),
+      otherwise: (schema) => schema.notRequired(),
+    }),
+  qualification: yup
+    .string()
+    .when("occupationType", {
+      is: (val) => val && val !== "homemaker",
+      then: (schema) => schema.required("Qualification is required").max(100, "Qualification cannot exceed 100 characters"),
+      otherwise: (schema) => schema.notRequired(),
+    }),
+  maritalStatus: yup
+    .string()
+    .required("Marital status is required")
+    .oneOf(MARITAL_STATUS, "Invalid marital status"),
+  samaj: yup
+    .string()
+    .required("Samaj/Community is required")
+    .oneOf(SAMAJ_TYPES, "Invalid samaj/community"),
+  bloodGroup: yup
+    .string()
+    .required("Blood group is required"),
 });
 
 // Login validation schema

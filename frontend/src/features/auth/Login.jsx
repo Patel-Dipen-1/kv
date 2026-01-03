@@ -51,9 +51,9 @@ const Login = () => {
 
   useEffect(() => {
     if (isAuthenticated && user) {
-      // Check if user needs to complete profile
-      if (user.registrationStep === 1 && !user.profileCompleted) {
-        navigate("/complete-profile");
+      // Check if user needs to complete profile (after approval)
+      if (user.status === "approved" && !user.profileCompleted) {
+        navigate("/complete-profile", { replace: true });
         return;
       }
       

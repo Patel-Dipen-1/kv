@@ -29,15 +29,13 @@ const Dashboard = () => {
   const canExportData = usePermission("canExportData");
 
   useEffect(() => {
-    // Only fetch stats if user has permission
-    if (canViewStats) {
-      dispatch(getUserStats());
-    }
-    // Load first 5 pending users for quick actions
+    // Always fetch stats for admin dashboard (even without specific permission)
+    dispatch(getUserStats());
+    // Load first 5 pending users for quick actions (if has permission)
     if (canApproveUsers) {
       dispatch(getPendingUsers({ page: 1, limit: 5 }));
     }
-  }, [dispatch, canViewStats, canApproveUsers]);
+  }, [dispatch, canApproveUsers]);
 
   const statCards = [
     {

@@ -7,12 +7,9 @@ export const register = createAsyncThunk(
   async (userData, { rejectWithValue }) => {
     try {
       const { data } = await axiosInstance.post("/auth/register", userData);
-      // Store token and user in localStorage
-      if (data.token) {
-        localStorage.setItem("token", data.token);
-        localStorage.setItem("user", JSON.stringify(data.user));
-      }
-      return { user: data.user, token: data.token };
+      // Phase 1 registration doesn't return token - user must wait for approval
+      // Return success message only
+      return { message: data.message || "Registration submitted. Waiting for approval." };
     } catch (error) {
       return rejectWithValue(
         error.response?.data?.message ||
@@ -42,6 +39,28 @@ export const login = createAsyncThunk(
         error.response?.data?.message ||
         error.response?.data?.errors?.[0]?.message ||
         "Login failed"
+      );
+    }
+  }
+);
+
+export const completeProfile = createAsyncThunk(
+  "auth/completeProfile",
+  async (profileData, { rejectWithValue }) => {
+    try {
+      const { data } = await axiosInstance.post("/auth/complete-profile", profileData);
+      // Update user in localStorage
+      if (data.user) {
+        const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+        const updatedUser = { ...currentUser, ...data.user };
+        localStorage.setItem("user", JSON.stringify(updatedUser));
+      }
+      return { user: data.user, message: data.message };
+    } catch (error) {
+      return rejectWithValue(
+        error.response?.data?.message ||
+        error.response?.data?.errors?.[0]?.message ||
+        "Failed to complete profile"
       );
     }
   }
@@ -178,10 +197,9 @@ const authSlice = createSlice({
       })
       .addCase(register.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.user = action.payload.user;
-        state.token = action.payload.token;
-        state.isAuthenticated = true;
+        state.message = action.payload.message || "Registration submitted. Waiting for approval.";
         state.error = null;
+        // Don't set isAuthenticated - user must wait for approval
       })
       .addCase(register.rejected, (state, action) => {
         state.isLoading = false;
@@ -256,6 +274,40 @@ const authSlice = createSlice({
         state.error = null;
       })
       .addCase(resetPassword.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload;
+      });
+
+    // Complete Profile
+    builder
+      .addCase(completeProfile.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(completeProfile.fulfilled, (state, action) => {
+        state.isLoading = false;
+        const user = action.payload.user;
+        // Ensure roleRef.permissions is an object (not Map) for compatibility
+        if (user && user.roleRef && user.roleRef.permissions) {
+          if (user.roleRef.permissions.constructor !== Object) {
+            const permissionsObj = {};
+            if (user.roleRef.permissions.forEach) {
+              user.roleRef.permissions.forEach((value, key) => {
+                permissionsObj[key] = value;
+              });
+              user.roleRef.permissions = permissionsObj;
+            }
+          }
+        }
+        state.user = user;
+        state.message = action.payload.message || "Profile completed successfully";
+        state.error = null;
+        // Update localStorage
+        if (user) {
+          localStorage.setItem("user", JSON.stringify(user));
+        }
+      })
+      .addCase(completeProfile.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload;
       });
